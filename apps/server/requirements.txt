@@ -1,0 +1,30 @@
+# Backend runtime dependencies (apps/server).
+#
+# Install (run from apps/server):
+#   .venv/Scripts/python.exe -m pip install -r requirements.txt
+#
+# Already-installed deps are pinned to the exact tested version for
+# reproducibility. Stage-1 additions use compatible-release (~=) so a
+# fresh install still gets security patches within the same major line.
+# Transitive deps (anyio, starlette, Mako, MarkupSafe, ...) are intentionally
+# NOT listed — they are resolved automatically from the ones below.
+
+# --- Web framework ---
+fastapi==0.136.1
+uvicorn[standard]==0.47.0
+
+# --- Database / ORM / migrations ---
+SQLAlchemy==2.0.49
+asyncpg==0.31.0
+alembic==1.18.4
+
+# --- Config / validation ---
+pydantic==2.13.4
+pydantic-settings==2.14.1
+python-dotenv==1.2.2
+PyYAML==6.0.3
+
+# --- Stage 1: authentication (new) ---
+PyJWT~=2.10
+bcrypt~=4.3
+email-validator~=2.2

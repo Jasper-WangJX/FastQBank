@@ -18,25 +18,27 @@
 
 ## 阶段总览
 
-| 阶段 | 目标产物 | 大致工作量\* |
-|---|---|---|
-| 0 脚手架 | 仓库结构、本地能起前后端 + DB | 1-2 天 |
-| 1 数据底座 + 认证 | 注册登录、JWT、表迁移 | 2-3 天 |
-| 2 题目 / 标签 CRUD（手动录入） | Web 端能手动建标签、录题、查看列表、LaTeX 渲染 | 4-6 天 |
-| 3 云端同步 + 软删除 + 部署小环境 | 部署到 VPS、域名可访问、多端拉取一致 | 2-3 天 |
-| 4 Electron 壳 | 桌面端能跑，复用 web 构建 + 托盘图标 | 2-3 天 |
-| 5 OCR 录题链路 | 框选截屏 → OCR → 拆分 → 确认页入库 | 5-7 天 |
-| 6 AI 接入 | 标签推荐 + 知识点摘要 + 限流 | 3-4 天 |
-| 7 Flashcards 复习 + 错题集 | 卡片式过题、显隐答案、乱序、错题自动归集 | 3-4 天 |
-| 8 AI 出题 | 种子选择 → 预览页 → 入库 + 三种过题模式 | 3-4 天 |
-| 9 JSON 导入导出 | 导出全量、导入按 UUID 跳过重复 | 1-2 天 |
-| 10 打磨 + Windows 安装包 | electron-builder 打包、产品化收尾 | 2-3 天 |
+| 阶段 | 状态 | 目标产物 | 大致工作量\* |
+|---|---|---|---|
+| 0 脚手架 | ✅ 已完成 (2026-05-16) | 仓库结构、本地能起前后端 + DB | 1-2 天 |
+| 1 数据底座 + 认证 | ✅ 已完成 (2026-05-16) | 注册登录、JWT、表迁移 | 2-3 天 |
+| 2 题目 / 标签 CRUD（手动录入） | ⬜ 待办 | Web 端能手动建标签、录题、查看列表、LaTeX 渲染 | 4-6 天 |
+| 3 云端同步 + 软删除 + 部署小环境 | ⬜ 待办 | 部署到 VPS、域名可访问、多端拉取一致 | 2-3 天 |
+| 4 Electron 壳 | ⬜ 待办 | 桌面端能跑，复用 web 构建 + 托盘图标 | 2-3 天 |
+| 5 OCR 录题链路 | ⬜ 待办 | 框选截屏 → OCR → 拆分 → 确认页入库 | 5-7 天 |
+| 6 AI 接入 | ⬜ 待办 | 标签推荐 + 知识点摘要 + 限流 | 3-4 天 |
+| 7 Flashcards 复习 + 错题集 | ⬜ 待办 | 卡片式过题、显隐答案、乱序、错题自动归集 | 3-4 天 |
+| 8 AI 出题 | ⬜ 待办 | 种子选择 → 预览页 → 入库 + 三种过题模式 | 3-4 天 |
+| 9 JSON 导入导出 | ⬜ 待办 | 导出全量、导入按 UUID 跳过重复 | 1-2 天 |
+| 10 打磨 + Windows 安装包 | ⬜ 待办 | electron-builder 打包、产品化收尾 | 2-3 天 |
 
 \*工作量按"专注全职"估算，且假设对该层框架已上手；不熟悉的层（如第一次用 FastAPI/Electron）翻倍是正常的。
 
 ---
 
 ## 阶段 0 — 项目脚手架
+
+> **状态：✅ 已完成 (2026-05-16)。** 采用"简单子目录"monorepo（`apps/web`、`apps/server`；`packages/` 预留）。前端 Vite + React 19 + TS + Tailwind 4，后端 FastAPI，Postgres 16（docker-compose），`/health` 探针端到端打通。
 
 ### 任务
 - 建 monorepo（pnpm workspaces 或简单 git 仓库三个子目录）：`apps/web`、`apps/server`、`packages/shared`
@@ -51,6 +53,14 @@
 ---
 
 ## 阶段 1 — 数据底座 + 认证
+
+> **状态：✅ 已完成 (2026-05-16)。** 退出标准已端到端验证（注册 → 刷新仍登录 → 受鉴权 `/me` 返回邮箱），基于真实 Postgres + 浏览器走查。
+
+#### 实际实现说明（与原计划的差异）
+- **后端技术栈**：异步 SQLAlchemy + asyncpg；依赖钉在 `apps/server/requirements.txt`（未引入 pyproject / pnpm workspace —— `packages/shared` 推迟到阶段 4）。
+- **Schema**：单个手写 Alembic 基线迁移（`0001_initial_schema`）建全部 6 表 —— UUID 主键（`gen_random_uuid()`）、JSONB 的 `options`/`correct`、`ARRAY(UUID)`、`type`/`source` 的 CHECK 约束、`question_tags` 复合主键。异步 Alembic 环境（`alembic init -t async`），DB URL 从 `.env` 注入（不落进 `alembic.ini`）。
+- **认证**：直接用 `bcrypt`（弃 passlib）+ `PyJWT` HS256，24h 过期，密钥来自 `.env`。登录用 **JSON body**（非 OAuth2 表单）。**注册即签发 token**（注册=自动登录）。`/me` 用 **HTTPBearer** 安全方案保护，使 Swagger 的 Authorize 按钮可用；所有鉴权失败统一返回 401。
+- **前端**：`react-router-dom` v7；`lib/api.ts` fetch 封装（Authorization 拦截器 + 401→window 事件）；`AuthContext` 从 localStorage（键 `aqb_token`）复水 token，刷新保持登录；`RequireAuth` 守卫 + `PublicOnly` 重定向。
 
 ### 任务
 - 写 Alembic migration，建出策划案第六节列的全部表（User / Tag / Question / QuestionTag / ReviewLog / GenSession），即使本阶段只用到 User

@@ -18,25 +18,27 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 
 ## Phase Overview
 
-| Phase | Deliverable | Rough effort\* |
-|---|---|---|
-| 0 Scaffolding | Repo layout, local frontend + backend + DB running | 1-2 days |
-| 1 Data foundation + auth | Registration / login, JWT, schema migrations | 2-3 days |
-| 2 Question / tag CRUD (manual entry) | Web client can create tags, enter questions, list them, render LaTeX | 4-6 days |
-| 3 Cloud sync + soft delete + minimal prod | Deployed to VPS, domain reachable, cross-device consistency | 2-3 days |
-| 4 Electron shell | Desktop app boots, reuses web build, tray icon | 2-3 days |
-| 5 OCR entry pipeline | Region capture → OCR → split → confirmation page → save | 5-7 days |
-| 6 AI integration | Tag suggestion + knowledge summary + rate limiting | 3-4 days |
-| 7 Flashcards + wrong-set | Card-based drill, reveal/hide, shuffle, auto-collected wrong set | 3-4 days |
-| 8 AI generation | Seed selection → preview page → import + three drill modes | 3-4 days |
-| 9 JSON import / export | Full export, dedup-by-UUID import | 1-2 days |
-| 10 Polish + Windows installer | electron-builder packaging, productization | 2-3 days |
+| Phase | Status | Deliverable | Rough effort\* |
+|---|---|---|---|
+| 0 Scaffolding | ✅ Done (2026-05-16) | Repo layout, local frontend + backend + DB running | 1-2 days |
+| 1 Data foundation + auth | ✅ Done (2026-05-16) | Registration / login, JWT, schema migrations | 2-3 days |
+| 2 Question / tag CRUD (manual entry) | ⬜ Todo | Web client can create tags, enter questions, list them, render LaTeX | 4-6 days |
+| 3 Cloud sync + soft delete + minimal prod | ⬜ Todo | Deployed to VPS, domain reachable, cross-device consistency | 2-3 days |
+| 4 Electron shell | ⬜ Todo | Desktop app boots, reuses web build, tray icon | 2-3 days |
+| 5 OCR entry pipeline | ⬜ Todo | Region capture → OCR → split → confirmation page → save | 5-7 days |
+| 6 AI integration | ⬜ Todo | Tag suggestion + knowledge summary + rate limiting | 3-4 days |
+| 7 Flashcards + wrong-set | ⬜ Todo | Card-based drill, reveal/hide, shuffle, auto-collected wrong set | 3-4 days |
+| 8 AI generation | ⬜ Todo | Seed selection → preview page → import + three drill modes | 3-4 days |
+| 9 JSON import / export | ⬜ Todo | Full export, dedup-by-UUID import | 1-2 days |
+| 10 Polish + Windows installer | ⬜ Todo | electron-builder packaging, productization | 2-3 days |
 
 \*Effort estimates assume focused full-time work and familiarity with the framework in question. Double these for any layer you are touching for the first time.
 
 ---
 
 ## Phase 0 — Project Scaffolding
+
+> **Status: ✅ Done (2026-05-16).** Plain-subdir monorepo (`apps/web`, `apps/server`; `packages/` reserved). Vite + React 19 + TS + Tailwind 4 frontend, FastAPI backend, Postgres 16 via docker-compose, `/health` probe wired end to end.
 
 ### Tasks
 - Set up a monorepo (pnpm workspaces or a plain git repo with three subdirs): `apps/web`, `apps/server`, `packages/shared`
@@ -51,6 +53,14 @@ Locally `pnpm dev`, `uvicorn`, and `docker compose up postgres` all start cleanl
 ---
 
 ## Phase 1 — Data Foundation + Authentication
+
+> **Status: ✅ Done (2026-05-16).** Exit criteria verified end to end (register → refresh stays logged in → protected `/me` returns email) against real Postgres + a browser walkthrough.
+
+#### As-built notes (deviations from the original plan)
+- **Backend stack**: async SQLAlchemy + asyncpg; dependencies pinned in `apps/server/requirements.txt` (no pyproject/pnpm-workspace — `packages/shared` deferred to Phase 4).
+- **Schema**: one hand-written Alembic baseline migration (`0001_initial_schema`) creates all 6 tables — UUID PKs (`gen_random_uuid()`), JSONB `options`/`correct`, `ARRAY(UUID)`, CHECK constraints on `type`/`source`, composite PK on `question_tags`. Async Alembic env (`alembic init -t async`), DB URL injected from `.env` (kept out of `alembic.ini`).
+- **Auth**: `bcrypt` (used directly, not passlib) + `PyJWT` HS256, 24h expiry, secret from `.env`. Login uses a **JSON body** (not OAuth2 form). **Register auto-issues a token** (register = auto-login). `/me` guarded via an **HTTPBearer** scheme so Swagger's Authorize button works; all auth failures return a uniform 401.
+- **Frontend**: `react-router-dom` v7; `lib/api.ts` fetch wrapper (Authorization interceptor + 401 → window event); `AuthContext` rehydrates the token from localStorage (key `aqb_token`) so refresh keeps the session; `RequireAuth` guard + `PublicOnly` redirect.
 
 ### Tasks
 - Write Alembic migrations creating all tables listed in section 6 of the proposal (User / Tag / Question / QuestionTag / ReviewLog / GenSession), even though only User is used this phase
