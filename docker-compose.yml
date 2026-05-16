@@ -1,0 +1,30 @@
+# Local development infrastructure.
+# Stage 0: only Postgres. The backend/server is run directly with uvicorn
+# (not containerized yet) and connects to this DB from stage 1 onward.
+#
+#   Start:   docker compose up -d postgres
+#   Status:  docker compose ps
+#   Logs:    docker compose logs postgres
+#   Stop:    docker compose down        (keeps data)
+#   Wipe:    docker compose down -v     (deletes the data volume)
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: aqb-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
