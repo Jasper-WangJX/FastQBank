@@ -37,7 +37,11 @@ export function clearToken(): void {
  */
 export const UNAUTHORIZED_EVENT = "aqb:unauthorized";
 
-type JsonBody = Record<string, unknown> | unknown[];
+// The body is JSON.stringify'd below, which accepts any serializable
+// value, so `unknown` is the precise type. (A narrower object type would
+// reject named interfaces — they lack an index signature — forcing casts
+// in every typed API wrapper.)
+type JsonBody = unknown;
 
 interface RequestOptions {
   method?: string;

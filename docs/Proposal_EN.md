@@ -1,6 +1,5 @@
 # AI-Assisted Question Bank — Proposal v2
 
-> This document consolidates `Proposal.md` and `疑问回答.md` into a single baseline for design and development.
 > Chinese counterpart: `策划案_v2.md`.
 
 ---

@@ -1,0 +1,285 @@
+"""Question CRUD (Roadmap stage 2).
+
+Conventions mirror auth.py / tags.py: explicit paths, `user: CurrentUser`,
+`db: AsyncSession = Depends(get_db)`, every query scoped to the user AND
+`deleted_at IS NULL` (stage-3 soft-delete then costs one line).
+
+models.py declares NO ORM relationship on purpose (async lazy-load =
+MissingGreenlet), so tags are loaded explicitly and the list endpoint
+batch-loads them to avoid an N+1.
+"""
+
+from collections import defaultdict
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import delete, false, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import get_db
+from app.deps import CurrentUser
+from app.models import Question, QuestionTag, Tag
+from app.schemas import (
+    QuestionIn,
+    QuestionListOut,
+    QuestionOut,
+    QuestionUpdate,
+)
+
+# No prefix: paths written out explicitly, mirroring auth.py.
+router = APIRouter(tags=["questions"])
+
+
+def _to_out(q: Question, tags: list[Tag]) -> QuestionOut:
+    """Build the response model. `tags` is supplied explicitly (no ORM
+    relationship); pydantic validates the ORM Tag objects via TagOut's
+    from_attributes, and the JSONB option dicts via OptionOut."""
+    return QuestionOut(
+        id=q.id,
+        user_id=q.user_id,
+        stem=q.stem,
+        type=q.type,
+        options=q.options,
+        correct=q.correct,
+        knowledge_summary=q.knowledge_summary,
+        source=q.source,
+        created_at=q.created_at,
+        updated_at=q.updated_at,
+        tags=tags,
+    )
+
+
+async def _get_owned_question(
+    db: AsyncSession, user: CurrentUser, question_id: UUID
+) -> Question:
+    """Fetch a live question owned by the user, or 404 (not 403 — don't
+    leak which ids exist)."""
+    q = await db.scalar(
+        select(Question).where(
+            Question.id == question_id,
+            Question.user_id == user.id,
+            Question.deleted_at.is_(None),
+        )
+    )
+    if q is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="question not found",
+        )
+    return q
+
+
+async def _tags_for(db: AsyncSession, question_id: UUID) -> list[Tag]:
+    """Live tags linked to one question, ordered by path."""
+    rows = await db.scalars(
+        select(Tag)
+        .join(QuestionTag, QuestionTag.tag_id == Tag.id)
+        .where(
+            QuestionTag.question_id == question_id,
+            Tag.deleted_at.is_(None),
+        )
+        .order_by(Tag.path)
+    )
+    return list(rows.all())
+
+
+async def _validate_tag_ids(
+    db: AsyncSession, user: CurrentUser, tag_ids: list[UUID]
+) -> list[UUID]:
+    """Dedupe (preserving order) and assert every tag is owned & live.
+    Any unknown/foreign/deleted id => 400 (bad reference in the body)."""
+    unique = list(dict.fromkeys(tag_ids))
+    if not unique:
+        return []
+    found = (
+        await db.scalars(
+            select(Tag.id).where(
+                Tag.id.in_(unique),
+                Tag.user_id == user.id,
+                Tag.deleted_at.is_(None),
+            )
+        )
+    ).all()
+    if len(found) != len(unique):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="one or more tag_ids are invalid or not yours",
+        )
+    return unique
+
+
+@router.get("/questions", response_model=QuestionListOut)
+async def list_questions(
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    tag_id: UUID | None = Query(None),
+    q: str | None = Query(None),
+) -> QuestionListOut:
+    """Paginated list with optional keyword (ILIKE on stem) and tag
+    filters. `total` is the match count BEFORE limit/offset."""
+    conds = [Question.user_id == user.id, Question.deleted_at.is_(None)]
+    if q:
+        conds.append(Question.stem.ilike(f"%{q}%"))
+    if tag_id is not None:
+        # Subtree match: the tag itself + every descendant. ID-based paths
+        # make the subtree a pure prefix query (UUIDs never contain LIKE
+        # wildcards). Resolve the filter tag's path first; if it isn't an
+        # owned, live tag, match nothing instead of erroring.
+        base_path = await db.scalar(
+            select(Tag.path).where(
+                Tag.id == tag_id,
+                Tag.user_id == user.id,
+                Tag.deleted_at.is_(None),
+            )
+        )
+        if base_path is None:
+            conds.append(false())
+        else:
+            conds.append(
+                select(QuestionTag.question_id)
+                .join(Tag, Tag.id == QuestionTag.tag_id)
+                .where(
+                    QuestionTag.question_id == Question.id,
+                    Tag.user_id == user.id,
+                    Tag.deleted_at.is_(None),
+                    or_(
+                        Tag.path == base_path,
+                        Tag.path.like(base_path + "/%"),
+                    ),
+                )
+                .exists()
+            )
+
+    total = await db.scalar(
+        select(func.count()).select_from(Question).where(*conds)
+    )
+    questions = list(
+        (
+            await db.scalars(
+                select(Question)
+                .where(*conds)
+                .order_by(Question.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        ).all()
+    )
+
+    # One query for all tags on the returned page, grouped in Python.
+    tags_by_q: dict[UUID, list[Tag]] = defaultdict(list)
+    if questions:
+        qids = [qq.id for qq in questions]
+        rows = (
+            await db.execute(
+                select(QuestionTag.question_id, Tag)
+                .join(Tag, Tag.id == QuestionTag.tag_id)
+                .where(
+                    QuestionTag.question_id.in_(qids),
+                    Tag.deleted_at.is_(None),
+                )
+                .order_by(Tag.path)
+            )
+        ).all()
+        for qid, tag in rows:
+            tags_by_q[qid].append(tag)
+
+    items = [_to_out(qq, tags_by_q.get(qq.id, [])) for qq in questions]
+    return QuestionListOut(
+        items=items, total=total or 0, limit=limit, offset=offset
+    )
+
+
+@router.get("/questions/{question_id}", response_model=QuestionOut)
+async def get_question(
+    question_id: UUID,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> QuestionOut:
+    """One owned question with its tags (used to prefill the edit form)."""
+    question = await _get_owned_question(db, user, question_id)
+    tags = await _tags_for(db, question.id)
+    return _to_out(question, tags)
+
+
+@router.post(
+    "/questions",
+    response_model=QuestionOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_question(
+    body: QuestionIn,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> QuestionOut:
+    """Create a question (QuestionIn already enforced type/option/correct
+    consistency) and link the validated tags."""
+    tag_ids = await _validate_tag_ids(db, user, body.tag_ids)
+
+    question = Question(
+        user_id=user.id,
+        stem=body.stem,
+        type=body.type,
+        options=[o.model_dump() for o in body.options],
+        correct=list(body.correct),
+        knowledge_summary=body.knowledge_summary,
+        source=body.source,
+    )
+    db.add(question)
+    await db.flush()  # assigns DB-generated id
+    for tid in tag_ids:
+        db.add(QuestionTag(question_id=question.id, tag_id=tid))
+    await db.commit()
+    await db.refresh(question)
+
+    tags = await _tags_for(db, question.id)
+    return _to_out(question, tags)
+
+
+@router.put("/questions/{question_id}", response_model=QuestionOut)
+async def update_question(
+    question_id: UUID,
+    body: QuestionUpdate,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> QuestionOut:
+    """Full replace of scalar fields + replace-all of tag links. `source`
+    in the body is intentionally ignored so editing an OCR/AI question
+    never silently rewrites its origin."""
+    question = await _get_owned_question(db, user, question_id)
+    tag_ids = await _validate_tag_ids(db, user, body.tag_ids)
+
+    question.stem = body.stem
+    question.type = body.type
+    question.options = [o.model_dump() for o in body.options]
+    question.correct = list(body.correct)
+    question.knowledge_summary = body.knowledge_summary
+    question.updated_at = func.now()
+
+    # Replace-all: clearer than diffing, and avoids partial-merge bugs.
+    await db.execute(
+        delete(QuestionTag).where(QuestionTag.question_id == question.id)
+    )
+    for tid in tag_ids:
+        db.add(QuestionTag(question_id=question.id, tag_id=tid))
+    await db.commit()
+    await db.refresh(question)
+
+    tags = await _tags_for(db, question.id)
+    return _to_out(question, tags)
+
+
+@router.delete(
+    "/questions/{question_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_question(
+    question_id: UUID,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Physical delete in stage 2. question_tags rows are removed by the
+    ON DELETE CASCADE on question_tags.question_id."""
+    question = await _get_owned_question(db, user, question_id)
+    await db.delete(question)
+    await db.commit()

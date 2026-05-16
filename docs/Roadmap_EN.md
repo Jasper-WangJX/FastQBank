@@ -18,21 +18,19 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 
 ## Phase Overview
 
-| Phase | Status | Deliverable | Rough effort\* |
-|---|---|---|---|
-| 0 Scaffolding | ✅ Done (2026-05-16) | Repo layout, local frontend + backend + DB running | 1-2 days |
-| 1 Data foundation + auth | ✅ Done (2026-05-16) | Registration / login, JWT, schema migrations | 2-3 days |
-| 2 Question / tag CRUD (manual entry) | ⬜ Todo | Web client can create tags, enter questions, list them, render LaTeX | 4-6 days |
-| 3 Cloud sync + soft delete + minimal prod | ⬜ Todo | Deployed to VPS, domain reachable, cross-device consistency | 2-3 days |
-| 4 Electron shell | ⬜ Todo | Desktop app boots, reuses web build, tray icon | 2-3 days |
-| 5 OCR entry pipeline | ⬜ Todo | Region capture → OCR → split → confirmation page → save | 5-7 days |
-| 6 AI integration | ⬜ Todo | Tag suggestion + knowledge summary + rate limiting | 3-4 days |
-| 7 Flashcards + wrong-set | ⬜ Todo | Card-based drill, reveal/hide, shuffle, auto-collected wrong set | 3-4 days |
-| 8 AI generation | ⬜ Todo | Seed selection → preview page → import + three drill modes | 3-4 days |
-| 9 JSON import / export | ⬜ Todo | Full export, dedup-by-UUID import | 1-2 days |
-| 10 Polish + Windows installer | ⬜ Todo | electron-builder packaging, productization | 2-3 days |
-
-\*Effort estimates assume focused full-time work and familiarity with the framework in question. Double these for any layer you are touching for the first time.
+| Phase | Status | Deliverable |
+|---|---|---|
+| 0 Scaffolding | ✅ Done (2026-05-16) | Repo layout, local frontend + backend + DB running |
+| 1 Data foundation + auth | ✅ Done (2026-05-16) | Registration / login, JWT, schema migrations |
+| 2 Question / tag CRUD (manual entry) | ✅ Done (2026-05-16) | Web client can create tags, enter questions, list them, render LaTeX |
+| 3 Cloud sync + soft delete + minimal prod | ⬜ Todo | Deployed to VPS, domain reachable, cross-device consistency |
+| 4 Electron shell | ⬜ Todo | Desktop app boots, reuses web build, tray icon |
+| 5 OCR entry pipeline | ⬜ Todo | Region capture → OCR → split → confirmation page → save |
+| 6 AI integration | ⬜ Todo | Tag suggestion + knowledge summary + rate limiting |
+| 7 Flashcards + wrong-set | ⬜ Todo | Card-based drill, reveal/hide, shuffle, auto-collected wrong set |
+| 8 AI generation | ⬜ Todo | Seed selection → preview page → import + three drill modes |
+| 9 JSON import / export | ⬜ Todo | Full export, dedup-by-UUID import |
+| 10 Polish + Windows installer | ⬜ Todo | electron-builder packaging, productization |
 
 ---
 
@@ -74,7 +72,18 @@ Register an account in the browser, refresh, remain logged in, and a protected `
 
 ## Phase 2 — Question / Tag CRUD (Manual Entry)
 
+> **Status: ✅ Done (2026-05-16).** Exit criteria verified end to end: backend automated via httpx ASGITransport (pagination / keyword / tag-subtree / parent-tag-delete semantics, 23 assertions passing) and a 17-step browser walkthrough (build tree, enter 10 LaTeX questions, filter & search, edit & delete).
+
 The largest phase but the most valuable — everything later builds on it.
+
+#### As-built notes (deviations from the original plan)
+- **No new migration**: all 6 tables were created by the Phase 1 baseline migration, so Phase 2 is purely new Pydantic schemas + routers + three frontend pages; the DB schema is unchanged.
+- **Tag `path` is ID-based** (`<parent.path>/<self.id>`): rename only touches `name` — path and descendants are stable; only *move* recomputes the subtree paths, and cycle prevention degrades to a pure prefix check. Max depth 6.
+- **Tag delete**: cascades the whole subtree + unlinks questions (clears `question_tags`); questions themselves are kept. Physical delete in Phase 2, but every read query already filters `deleted_at IS NULL` — Phase 3 soft-delete is then a zero read-path change.
+- **Type validation** lives in one `QuestionIn` `model_validator` (single = exactly 1, multi ≥ 1, judge = T·F and exactly 1, unique labels, correct ⊆ labels), returning a single clear 422 instead of relying on DB CHECK constraints.
+- **Tag filter is subtree match** (by `path` prefix, includes descendant-tagged questions) — confirmed with the user as non-exact; question update ignores `source` so an OCR/AI origin is never rewritten.
+- **LaTeX**: raw `katex` + a hand-written `Latex` component (splits `$…$`/`$$…$$`, plain text via React nodes for XSS safety, unterminated `$` degrades gracefully); CSS imported once globally.
+- **Frontend**: `lib/qbank.ts` typed wrappers reuse the existing `apiFetch` (its body type widened to `unknown` to accept named types); new `AppLayout` nav shell + nested routes under `RequireAuth`; `/` redirects to `/questions`; the now-unused `HomePage` was removed. Refetch after every mutation; list keyword debounced 300ms.
 
 ### Tasks
 - Backend: full CRUD for `Tag` (with `parent_id` for tree structure) and `Question` (options, correct, three types)
@@ -208,9 +217,3 @@ Hand the `.exe` to a friend; they install it, log in, enter and review questions
 | DeepSeek API latency from the overseas server | Before phase 6, a single curl test | One curl call to the API, observe RTT and success rate |
 | Global hotkey collisions on different Windows setups | Phase 5 | Try Ctrl+Shift+Q, Alt+Q, F8 and a few fallbacks |
 
----
-
-## Recommended First Step
-
-1. Generate the Phase 0 scaffolding (monorepo layout, `docker-compose.yml`, an empty FastAPI + React app, health check endpoint)
-2. In parallel, run the PaddleOCR spike (standalone Python script + a few test images) to confirm OCR feasibility as early as possible

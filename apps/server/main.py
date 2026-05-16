@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.db import engine
-from app.routers import auth
+from app.routers import auth, questions, tags
 from app.settings import get_settings
 
 settings = get_settings()
@@ -28,6 +28,9 @@ app.add_middleware(
 
 # Auth endpoints: /auth/register, /auth/login, /me
 app.include_router(auth.router)
+# Stage 2 — tag tree + question CRUD
+app.include_router(tags.router)
+app.include_router(questions.router)
 
 
 # Liveness probe: the front-end HealthCheck component calls this on
