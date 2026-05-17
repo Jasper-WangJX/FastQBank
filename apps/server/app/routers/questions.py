@@ -2,7 +2,11 @@
 
 Conventions mirror auth.py / tags.py: explicit paths, `user: CurrentUser`,
 `db: AsyncSession = Depends(get_db)`, every query scoped to the user AND
-`deleted_at IS NULL` (stage-3 soft-delete then costs one line).
+`deleted_at IS NULL`. Deletes are SOFT (stage 3): the delete endpoint
+sets `deleted_at` instead of removing the row; reads already filter it,
+so they're unchanged and a delete is reversible. Conflict policy is LWW
+by server clock — `updated_at` is stamped `now()` on every mutation, so
+the last write to reach the server wins (acceptable for personal use).
 
 models.py declares NO ORM relationship on purpose (async lazy-load =
 MissingGreenlet), so tags are loaded explicitly and the list endpoint
@@ -278,8 +282,10 @@ async def delete_question(
     user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    """Physical delete in stage 2. question_tags rows are removed by the
-    ON DELETE CASCADE on question_tags.question_id."""
+    """Soft-delete (stage 3): set `deleted_at` instead of removing the
+    row. Every read path filters `deleted_at IS NULL`, so the question
+    disappears from list/get while staying recoverable. question_tags
+    links are kept (harmless — the question itself is hidden)."""
     question = await _get_owned_question(db, user, question_id)
-    await db.delete(question)
+    question.deleted_at = func.now()
     await db.commit()

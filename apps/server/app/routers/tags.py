@@ -6,21 +6,23 @@ path is `<parent.path>/<self.id>`. Consequences:
 - only *move* rewrites the subtree's paths;
 - LIKE prefix queries are safe (UUIDs never contain % or _).
 
-Every query is scoped to the current user AND `deleted_at IS NULL`. The
-`deleted_at IS NULL` predicate is written now even though deletes are
-physical in stage 2 — stage 3 then only swaps DELETE for `SET deleted_at`
-with zero read-path changes.
+Every query is scoped to the current user AND `deleted_at IS NULL`.
+Deletes are SOFT (stage 3): the delete endpoint sets `deleted_at` instead
+of removing rows; every read path already filters it, so reads are
+unchanged and a delete is reversible. Conflict policy is LWW by
+server clock — `updated_at` is stamped `now()` on every mutation, so the
+last write to reach the server wins (acceptable for personal use).
 """
 
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.deps import CurrentUser
-from app.models import QuestionTag, Tag
+from app.models import Tag
 from app.schemas import TagIn, TagMove, TagOut, TagRename
 
 # Root tag = depth 1. depth == path.count("/") + 1, so MAX_DEPTH levels
@@ -243,31 +245,25 @@ async def move_tag(
 async def delete_tag(
     tag_id: UUID, user: CurrentUser, db: AsyncSession = Depends(get_db)
 ) -> None:
-    """Delete the tag and its whole subtree; questions are kept but lose
-    these tags. Physical delete in stage 2 (see module docstring)."""
+    """Soft-delete the tag and its whole subtree (set `deleted_at`).
+    question_tags links are intentionally kept: every read path filters
+    `Tag.deleted_at IS NULL`, so questions simply stop showing these tags
+    and the delete is reversible. The `deleted_at IS NULL` predicate means
+    an already-deleted descendant keeps its original timestamp (e.g.
+    deleting a child first, then its parent)."""
     tag = await _get_owned_tag(db, user, tag_id)
 
-    ids = list(
-        (
-            await db.scalars(
-                select(Tag.id).where(
-                    Tag.user_id == user.id,
-                    Tag.deleted_at.is_(None),
-                    or_(
-                        Tag.path == tag.path,
-                        Tag.path.like(tag.path + "/%"),
-                    ),
-                )
-            )
-        ).all()
+    # One UPDATE soft-deletes the node + every descendant (id-based path
+    # prefix; UUIDs never contain LIKE wildcards).
+    await db.execute(
+        update(Tag)
+        .where(
+            Tag.user_id == user.id,
+            Tag.deleted_at.is_(None),
+            or_(Tag.path == tag.path, Tag.path.like(tag.path + "/%")),
+        )
+        .values(deleted_at=func.now())
     )
-
-    # Unlink questions explicitly. The question_tags.tag_id FK is also
-    # ON DELETE CASCADE, but being explicit documents the intent.
-    await db.execute(delete(QuestionTag).where(QuestionTag.tag_id.in_(ids)))
-    # One DELETE removes parents and children together; the self-FK RI
-    # check runs after the statement, so subtree-in-one-statement is fine.
-    await db.execute(delete(Tag).where(Tag.id.in_(ids)))
     await db.commit()
 
 

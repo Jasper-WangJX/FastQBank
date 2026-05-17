@@ -1,0 +1,10 @@
+# Used by builds whose context is the repo root (the frontend image in
+# deploy/web.Dockerfile). The backend build uses apps/server/.dockerignore.
+**/node_modules
+**/.venv
+**/dist
+**/__pycache__
+**/*.py[cod]
+.git
+*.log
+*.tmp

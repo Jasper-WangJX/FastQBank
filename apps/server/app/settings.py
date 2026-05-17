@@ -3,11 +3,17 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Resolve the repo-root .env independently of the current working
-# directory. This file lives at apps/server/app/settings.py, so the repo
-# root is 3 parents up. Without this, launching uvicorn from apps/server
-# would make pydantic-settings look for .env in the wrong place.
-_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
+# Repo-root .env (apps/server/app/settings.py -> 3 parents up), resolved
+# independently of CWD so launching uvicorn from any directory still
+# finds it. In the Docker image the code lives shallower
+# (/app/app/settings.py) with no repo-root .env — fall back to None so
+# pydantic-settings just reads real environment variables (which
+# docker-compose injects). Indexing parents[3] blindly would IndexError
+# there and crash startup.
+_resolved = Path(__file__).resolve()
+_ENV_FILE = (
+    _resolved.parents[3] / ".env" if len(_resolved.parents) > 3 else None
+)
 
 
 class Settings(BaseSettings):

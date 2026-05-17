@@ -1,0 +1,23 @@
+# Production reverse proxy + static host. Caddy obtains and renews HTTPS
+# certificates automatically (Let's Encrypt), provided the domains resolve
+# to this server and ports 80/443 are reachable.
+
+# Frontend SPA. try_files falls back to index.html so client-side routes
+# (/tags, /questions, ...) work on hard refresh.
+fastqbank.com {
+	encode gzip zstd
+	root * /srv/web
+	try_files {path} /index.html
+	file_server
+}
+
+# Backend API (separate subdomain — no path collision with SPA routes).
+api.fastqbank.com {
+	encode gzip zstd
+	reverse_proxy server:8000
+}
+
+# Optional: enable after adding a `www` A record -> same VPS IP.
+# www.fastqbank.com {
+# 	redir https://fastqbank.com{uri} permanent
+# }
