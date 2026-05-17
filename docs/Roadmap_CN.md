@@ -23,7 +23,7 @@
 | 0 脚手架 | ✅ 已完成 (2026-05-16) | 仓库结构、本地能起前后端 + DB |
 | 1 数据底座 + 认证 | ✅ 已完成 (2026-05-16) | 注册登录、JWT、表迁移 |
 | 2 题目 / 标签 CRUD（手动录入） | ✅ 已完成 (2026-05-16) | Web 端能手动建标签、录题、查看列表、LaTeX 渲染 |
-| 3 云端同步 + 软删除 + 部署小环境 | ⬜ 待办 | 部署到 VPS、域名可访问、多端拉取一致 |
+| 3 云端同步 + 软删除 + 部署小环境 | ✅ 已完成 (2026-05-17) | 部署到 VPS、域名可访问、多端拉取一致 |
 | 4 Electron 壳 | ⬜ 待办 | 桌面端能跑，复用 web 构建 + 托盘图标 |
 | 5 OCR 录题链路 | ⬜ 待办 | 框选截屏 → OCR → 拆分 → 确认页入库 |
 | 6 AI 接入 | ⬜ 待办 | 标签推荐 + 知识点摘要 + 限流 |
@@ -99,6 +99,17 @@
 ---
 
 ## 阶段 3 — 云端同步 + 软删除 + 小生产环境
+
+> **状态：✅ 已完成 (2026-05-17)。** 拆为 3a（软删 + 同步语义，本地可验）/ 3b（生产部署），详见 `Phase3_Plan_CN.md`。退出标准已在真实生产域名 `https://fastqbank.com` 上双端验收：增/改/删跨端传播、LWW、软删本质（psql 确认行仍在）全部通过；后端另有 httpx 自动化 39 项断言。
+
+#### 实际实现说明（与原计划的差异）
+- **软删除**：`tags`/`questions` 的 `deleted_at` 列阶段 1 已建，本阶段仅把删除端点改 `UPDATE deleted_at=now()`；读路径阶段 2 已全带 `deleted_at IS NULL`，零改动。`delete_tag` 软删整棵子树并**保留** `question_tags` 链接（`_tags_for`/子树筛选 join 已过滤软删标签 → 题目侧自动隐藏且可逆）。
+- **LWW**：采用「服务端盖章，后到者胜」（`update/rename/move` 均 `updated_at=func.now()`），不做客户端时间戳比较。
+- **同步**：采用「最小化——打开即全量重拉」，未实现 `?since=` 增量 / tombstone（前端各页挂载即拉，配合共享后端即多端一致）。
+- **部署结构**：api 子域名方案——前端 `https://fastqbank.com`（Caddy 托管静态 SPA），后端 `https://api.fastqbank.com`（Caddy 反代 `server:8000`），后端路由零改动、无 SPA/API 路径冲突。
+- **编排**：`apps/server/Dockerfile`（启动跑 `alembic upgrade head`）+ 多阶段前端镜像（node:22 构建 → caddy:2，烘焙 `VITE_API_BASE_URL`）+ `deploy/docker-compose.prod.yml`（postgres+server+caddy，Caddy 自动 HTTPS，证书卷持久化）。配置经 git 忽略的 `deploy/.env.prod`；CORS 经 `CORS_ORIGINS` JSON env 注入，**零代码**。
+- **部署期修复**：`settings.py` 写死 `parents[3]` 推算仓库根 `.env`，镜像内目录层级浅 → 启动 `IndexError`；改为 `len(parents)>3` 才取、否则回退读环境变量（本地开发行为不变，已验证）。
+- **验证**：本地 prod-shaped 演练（compose 起 postgres+server，迁移/健康/注册全绿）+ 生产 VPS 浏览器双端验收全部通过。
 
 ### 任务
 - 数据模型加 `deleted_at` 列，所有查询带 `WHERE deleted_at IS NULL`

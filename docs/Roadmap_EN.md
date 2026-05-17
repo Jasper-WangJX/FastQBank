@@ -23,7 +23,7 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 | 0 Scaffolding | ✅ Done (2026-05-16) | Repo layout, local frontend + backend + DB running |
 | 1 Data foundation + auth | ✅ Done (2026-05-16) | Registration / login, JWT, schema migrations |
 | 2 Question / tag CRUD (manual entry) | ✅ Done (2026-05-16) | Web client can create tags, enter questions, list them, render LaTeX |
-| 3 Cloud sync + soft delete + minimal prod | ⬜ Todo | Deployed to VPS, domain reachable, cross-device consistency |
+| 3 Cloud sync + soft delete + minimal prod | ✅ Done (2026-05-17) | Deployed to VPS, domain reachable, cross-device consistency |
 | 4 Electron shell | ⬜ Todo | Desktop app boots, reuses web build, tray icon |
 | 5 OCR entry pipeline | ⬜ Todo | Region capture → OCR → split → confirmation page → save |
 | 6 AI integration | ⬜ Todo | Tag suggestion + knowledge summary + rate limiting |
@@ -98,6 +98,45 @@ Build a tag tree from scratch on the web, enter 10 questions with LaTeX, filter 
 ---
 
 ## Phase 3 — Cloud Sync + Soft Delete + Minimal Production
+
+> **Status: ✅ Done (2026-05-17).** Split into 3a (soft delete + sync
+> semantics, locally verifiable) / 3b (production deploy); see
+> `Phase3_Plan_CN.md`. Exit criteria accepted on the real production
+> domain `https://fastqbank.com` from two clients: create/edit/delete
+> propagate across devices, LWW, and soft-delete (rows still present,
+> confirmed via psql) all pass; plus 39 backend httpx assertions.
+
+#### As-built notes (deviations from the original plan)
+- **Soft delete**: the `deleted_at` columns on `tags`/`questions` already
+  existed (Phase 1 baseline); this phase only switched delete endpoints to
+  `UPDATE deleted_at=now()`. Read paths already filtered
+  `deleted_at IS NULL` (Phase 2) — zero changes. `delete_tag` soft-deletes
+  the whole subtree and **keeps** `question_tags` links (the
+  `_tags_for`/subtree-filter joins already exclude soft-deleted tags, so
+  questions just stop showing them — reversible).
+- **LWW**: server-stamped, last-writer-wins (`update/rename/move` all set
+  `updated_at=func.now()`); no client-timestamp comparison.
+- **Sync**: minimal — full refetch on app open; no `?since=`
+  increment / tombstones (pages fetch on mount; a shared backend gives
+  cross-device consistency).
+- **Deploy structure**: api-subdomain — frontend `https://fastqbank.com`
+  (Caddy serves the static SPA), backend `https://api.fastqbank.com`
+  (Caddy reverse-proxies `server:8000`). No backend route changes, no
+  SPA/API path collision.
+- **Orchestration**: `apps/server/Dockerfile` (runs `alembic upgrade head`
+  on start) + a multi-stage frontend image (node:22 build → caddy:2, bakes
+  `VITE_API_BASE_URL`) + `deploy/docker-compose.prod.yml`
+  (postgres+server+caddy, automatic HTTPS, cert volume persisted). Config
+  via git-ignored `deploy/.env.prod`; CORS injected via the
+  `CORS_ORIGINS` JSON env var — **no code change**.
+- **Fixed during deploy**: `settings.py` hard-indexed `parents[3]` to find
+  the repo-root `.env`; the image's shallower layout made that
+  `IndexError` at startup. Changed to take `parents[3]` only when
+  `len(parents) > 3`, else fall back to environment variables (local dev
+  behaviour unchanged, verified).
+- **Verification**: a local prod-shaped dry run (compose postgres+server;
+  migration/health/register all green) + a two-client browser acceptance
+  on the production VPS, all passing.
 
 ### Tasks
 - Add `deleted_at` column to every model; all queries filter `WHERE deleted_at IS NULL`
