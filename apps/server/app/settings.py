@@ -29,10 +29,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24  # 24h
 
-    # CORS allow-list (Vite dev server; 5174 is the fallback port).
+    # CORS allow-list. Vite dev server (5174 is the fallback port) plus
+    # the Electron desktop shell: its renderer loads the SPA via the
+    # custom `app://aqb` scheme (stage 4), so that fixed origin must be
+    # whitelisted or every API call from the desktop app is blocked.
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://localhost:5174",
+        "app://aqb",
     ]
 
     model_config = SettingsConfigDict(

@@ -1,0 +1,50 @@
+{
+  "name": "desktop",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Electron desktop shell for AI Question Bank — reuses the apps/web production build, loaded via a custom app:// protocol.",
+  "main": "out/main.js",
+  "scripts": {
+    "gen:icons": "node scripts/gen-icons.cjs",
+    "build:desktop": "tsc -p tsconfig.json",
+    "build:web": "cross-env VITE_API_BASE_URL=https://api.fastqbank.com pnpm --dir ../web run build",
+    "build": "pnpm build:web && pnpm build:desktop",
+    "dev": "cross-env ELECTRON_DEV=1 pnpm build:desktop && cross-env ELECTRON_DEV=1 electron .",
+    "start": "electron .",
+    "package": "pnpm build && electron-builder --dir"
+  },
+  "build": {
+    "appId": "com.fastqbank.desktop",
+    "productName": "AI Question Bank",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**",
+      "assets/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "web-dist"
+      }
+    ],
+    "win": {
+      "target": "dir",
+      "icon": "assets/icon.png"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.3",
+    "cross-env": "^7.0.3",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "~6.0.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ]
+  }
+}

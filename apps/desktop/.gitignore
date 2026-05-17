@@ -1,0 +1,5 @@
+# Self-contained ignores (root .gitignore already covers these; kept so
+# the package is portable on its own).
+node_modules/
+out/
+release/

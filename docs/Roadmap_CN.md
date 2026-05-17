@@ -24,7 +24,7 @@
 | 1 数据底座 + 认证 | ✅ 已完成 (2026-05-16) | 注册登录、JWT、表迁移 |
 | 2 题目 / 标签 CRUD（手动录入） | ✅ 已完成 (2026-05-16) | Web 端能手动建标签、录题、查看列表、LaTeX 渲染 |
 | 3 云端同步 + 软删除 + 部署小环境 | ✅ 已完成 (2026-05-17) | 部署到 VPS、域名可访问、多端拉取一致 |
-| 4 Electron 壳 | ⬜ 待办 | 桌面端能跑，复用 web 构建 + 托盘图标 |
+| 4 Electron 壳 | ✅ 已完成 (2026-05-17) | 桌面端能跑，复用 web 构建 + 托盘图标 |
 | 5 OCR 录题链路 | ⬜ 待办 | 框选截屏 → OCR → 拆分 → 确认页入库 |
 | 6 AI 接入 | ⬜ 待办 | 标签推荐 + 知识点摘要 + 限流 |
 | 7 Flashcards 复习 + 错题集 | ⬜ 待办 | 卡片式过题、显隐答案、乱序、错题自动归集 |
@@ -100,7 +100,7 @@
 
 ## 阶段 3 — 云端同步 + 软删除 + 小生产环境
 
-> **状态：✅ 已完成 (2026-05-17)。** 拆为 3a（软删 + 同步语义，本地可验）/ 3b（生产部署），详见 `Phase3_Plan_CN.md`。退出标准已在真实生产域名 `https://fastqbank.com` 上双端验收：增/改/删跨端传播、LWW、软删本质（psql 确认行仍在）全部通过；后端另有 httpx 自动化 39 项断言。
+> **状态：✅ 已完成 (2026-05-17)。** 拆为 3a（软删 + 同步语义，本地可验）/ 3b（生产部署）。退出标准已在真实生产域名 `https://fastqbank.com` 上双端验收：增/改/删跨端传播、LWW、软删本质（psql 确认行仍在）全部通过；后端另有 httpx 自动化 39 项断言。
 
 #### 实际实现说明（与原计划的差异）
 - **软删除**：`tags`/`questions` 的 `deleted_at` 列阶段 1 已建，本阶段仅把删除端点改 `UPDATE deleted_at=now()`；读路径阶段 2 已全带 `deleted_at IS NULL`，零改动。`delete_tag` 软删整棵子树并**保留** `question_tags` 链接（`_tags_for`/子树筛选 join 已过滤软删标签 → 题目侧自动隐藏且可逆）。
@@ -124,6 +124,19 @@
 ---
 
 ## 阶段 4 — Electron 壳
+
+> **状态：✅ 已完成 (2026-05-17)。** 采用方案 A（自定义 `app://aqb` 协议加载 `apps/web` 生产构建）。构建 / 打包 / 无头启动已自动验证，用户 GUI 双端走查（登录生产后端、网页↔桌面数据互通、刷新不白屏、重启保登录、关窗到托盘 / 召回 / 退出、二次启动聚焦）全部通过。
+
+#### 实际实现说明（与原计划的差异）
+- **脚手架**：未用 electron-vite/electron-forge；`apps/desktop` 为独立 package（仍无 monorepo workspace —— 与阶段 1 备注里推迟的 `packages/shared` 一致，本阶段也未引入），渲染层零改造直接复用 `apps/web` 既有 Vite 构建。主 / 预加载用 `tsc` 编译（`module`/`moduleResolution: node16`，避开 TS6 弃用的 classic `node`）。
+- **方案 A 加载**：主进程注册标准 + 安全的自定义 `app://` scheme，`protocol.handle` 从 `dist` 提供文件、未命中路径回退 `index.html`（等价 Caddy `try_files`），固定 origin `app://aqb`。由此保留 `BrowserRouter`、刷新 / 深链不白屏、localStorage 登录态持久、CORS 仅需放行单一固定 origin。Vite 默认 `base:"/"` 的绝对资源路径由 handler 按 URL pathname 映射天然兼容，**web 侧零改动**。
+- **dev/prod 分支**：`ELECTRON_DEV=1` → 加载 `http://localhost:5173`（Vite dev server，origin 已在白名单）；否则 `app://aqb/`。
+- **后端 CORS**：`settings.py` 默认列表 + `deploy/env.prod.example` 加 `app://aqb`；VPS 真实 `deploy/.env.prod` 已由用户改并验证（生产桌面端登录通过）。
+- **托盘 / 生命周期**：`Tray` + 菜单（打开主窗 / 退出）、左键切换显隐、关闭窗口拦截改隐藏（`isQuitting` 标志区分真退出）、`requestSingleInstanceLock` + `second-instance` 聚焦已有窗。`window-all-closed` 故意空实现（托盘常驻）。
+- **图标**：零依赖纯 `zlib` PNG 生成器（`scripts/gen-icons.cjs`）产占位 `icon.png`(256)/`tray.png`(32)，放 `apps/desktop/assets/`（非计划里的 `build/` —— 根 `.gitignore` 忽略 `build/`）。正式图标留阶段 10。
+- **打包边界**：本阶段不出正式安装器；`electron-builder --dir` 仅用于验证「可双击」，`extraResources` 把 `apps/web/dist` 打进 `resources/web-dist`，主进程按 `app.isPackaged` 切换 dist 路径。正式 Windows 安装包留阶段 10。
+- **环境坑（已固化修复）**：pnpm 11 拦截 Electron 二进制 postinstall → `package.json` `pnpm.onlyBuiltDependencies` + `apps/desktop/.npmrc` `verify-deps-before-run=false`，二进制经 `node node_modules/electron/install.js` 落地。
+- **验证**：`pnpm build`（web 烘焙 `VITE_API_BASE_URL=https://api.fastqbank.com`、无 localhost 泄漏）+ `electron-builder --dir` + 打包 exe 无头启动无崩溃；用户 GUI 双端走查 4 项行为全过。
 
 ### 任务
 - 新建 `apps/desktop`，electron-vite 或 electron-forge 起脚手架

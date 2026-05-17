@@ -24,7 +24,7 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 | 1 Data foundation + auth | ✅ Done (2026-05-16) | Registration / login, JWT, schema migrations |
 | 2 Question / tag CRUD (manual entry) | ✅ Done (2026-05-16) | Web client can create tags, enter questions, list them, render LaTeX |
 | 3 Cloud sync + soft delete + minimal prod | ✅ Done (2026-05-17) | Deployed to VPS, domain reachable, cross-device consistency |
-| 4 Electron shell | ⬜ Todo | Desktop app boots, reuses web build, tray icon |
+| 4 Electron shell | ✅ Done (2026-05-17) | Desktop app boots, reuses web build, tray icon |
 | 5 OCR entry pipeline | ⬜ Todo | Region capture → OCR → split → confirmation page → save |
 | 6 AI integration | ⬜ Todo | Tag suggestion + knowledge summary + rate limiting |
 | 7 Flashcards + wrong-set | ⬜ Todo | Card-based drill, reveal/hide, shuffle, auto-collected wrong set |
@@ -100,8 +100,7 @@ Build a tag tree from scratch on the web, enter 10 questions with LaTeX, filter 
 ## Phase 3 — Cloud Sync + Soft Delete + Minimal Production
 
 > **Status: ✅ Done (2026-05-17).** Split into 3a (soft delete + sync
-> semantics, locally verifiable) / 3b (production deploy); see
-> `Phase3_Plan_CN.md`. Exit criteria accepted on the real production
+> semantics, locally verifiable) / 3b (production deploy). Exit criteria accepted on the real production
 > domain `https://fastqbank.com` from two clients: create/edit/delete
 > propagate across devices, LWW, and soft-delete (rows still present,
 > confirmed via psql) all pass; plus 39 backend httpx assertions.
@@ -151,6 +150,19 @@ From two browsers on two machines, log in as the same user; create a question on
 ---
 
 ## Phase 4 — Electron Shell
+
+> **Status: ✅ Done (2026-05-17).** Approach A (custom `app://aqb` scheme loading the `apps/web` production build). Build / packaging / headless boot auto-verified; a two-context user GUI walkthrough (login against the prod backend, web↔desktop data parity, no blank screen on refresh, session kept across restart, close-to-tray / recall / quit, second-launch focus) all pass.
+
+#### As-built notes (deviations from the original plan)
+- **Scaffold**: no electron-vite/electron-forge; `apps/desktop` is a standalone package (still no monorepo workspace — consistent with the `packages/shared` deferral noted in Phase 1; not introduced here either), reusing the existing `apps/web` Vite build with zero renderer changes. Main/preload compiled with `tsc` (`module`/`moduleResolution: node16`, off TS6's deprecated classic `node`).
+- **Approach-A loading**: main registers a standard + secure custom `app://` scheme; `protocol.handle` serves files from `dist` and falls back to `index.html` for unmatched paths (equivalent to Caddy's `try_files`), fixed origin `app://aqb`. This keeps `BrowserRouter`, no blank screen on refresh/deep-link, a persistent localStorage session, and a single fixed CORS origin. Vite's default `base:"/"` absolute asset paths are handled naturally by mapping the URL pathname — **zero web-side changes**.
+- **Dev/prod branch**: `ELECTRON_DEV=1` → loads `http://localhost:5173` (Vite dev server, origin already whitelisted); otherwise `app://aqb/`.
+- **Backend CORS**: `app://aqb` added to the `settings.py` default list + `deploy/env.prod.example`; the real `deploy/.env.prod` on the VPS updated and verified by the user (prod desktop login confirmed).
+- **Tray/lifecycle**: `Tray` + menu (open main window / quit), left-click toggles visibility, window close intercepted to hide (`isQuitting` flag distinguishes a real quit), `requestSingleInstanceLock` + `second-instance` focuses the existing window. `window-all-closed` is intentionally a no-op (tray-resident).
+- **Icons**: a dependency-free pure-`zlib` PNG generator (`scripts/gen-icons.cjs`) produces placeholder `icon.png`(256)/`tray.png`(32) in `apps/desktop/assets/` (not the planned `build/` — root `.gitignore` ignores `build/`). Real icon deferred to Phase 10.
+- **Packaging boundary**: no real installer this phase; `electron-builder --dir` only validates the "double-clickable" criterion, `extraResources` copies `apps/web/dist` into `resources/web-dist`, and main switches the dist path on `app.isPackaged`. The Windows installer is Phase 10.
+- **Environment gotcha (fixed durably)**: pnpm 11 blocks Electron's binary postinstall → `package.json` `pnpm.onlyBuiltDependencies` + `apps/desktop/.npmrc` `verify-deps-before-run=false`; binary fetched via `node node_modules/electron/install.js`.
+- **Verification**: `pnpm build` (web bakes `VITE_API_BASE_URL=https://api.fastqbank.com`, no localhost leak) + `electron-builder --dir` + headless boot of the packaged exe with no crash; the user's GUI walkthrough of the 4 behaviors all pass.
 
 ### Tasks
 - Create `apps/desktop`, scaffold with electron-vite or electron-forge
