@@ -10,7 +10,8 @@
             "driver": "PostgreSQL",
             "database": "aqb",
             "username": "aqb",
-            "name": "aqb"
+            "name": "aqb",
+            "python.terminal.activateEnvironment": false
         }
     ]
 }

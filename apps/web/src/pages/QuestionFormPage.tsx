@@ -3,7 +3,7 @@
 // server's 422 is the source of truth and is surfaced in the error box.
 
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../lib/api";
 import {
   createQuestion,
@@ -14,6 +14,7 @@ import {
   type QuestionType,
   type Tag,
 } from "../lib/qbank";
+import type { OcrPrefill } from "../lib/desktop";
 import Latex from "../components/Latex";
 
 const JUDGE_OPTIONS: Option[] = [
@@ -39,6 +40,12 @@ export default function QuestionFormPage() {
   const { id } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
+  const location = useLocation();
+  // Draft handed over by AppLayout after an OCR capture (router state,
+  // so it never hits the URL and the manual/edit paths are untouched).
+  const ocrPrefill =
+    (location.state as { ocrPrefill?: OcrPrefill } | null)?.ocrPrefill ??
+    null;
 
   const [stem, setStem] = useState("");
   const [type, setType] = useState<QuestionType>("single");
@@ -49,6 +56,7 @@ export default function QuestionFormPage() {
   const [correct, setCorrect] = useState<string[]>([]);
   const [knowledgeSummary, setKnowledgeSummary] = useState("");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [source, setSource] = useState<"manual" | "ocr">("manual");
 
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +80,12 @@ export default function QuestionFormPage() {
           setCorrect(question.correct);
           setKnowledgeSummary(question.knowledge_summary ?? "");
           setSelectedTagIds(question.tags.map((t) => t.id));
+        } else if (ocrPrefill) {
+          setStem(ocrPrefill.stem);
+          setType(ocrPrefill.type);
+          if (ocrPrefill.options.length > 0) setOptions(ocrPrefill.options);
+          setCorrect([]); // OCR can't know the answer — user picks it
+          setSource("ocr");
         }
         setLoading(false);
       })
@@ -86,7 +100,7 @@ export default function QuestionFormPage() {
     return () => {
       cancelled = true;
     };
-  }, [id, isEdit]);
+  }, [id, isEdit, ocrPrefill]);
 
   function changeType(next: QuestionType) {
     setType(next);
@@ -180,6 +194,7 @@ export default function QuestionFormPage() {
         correct,
         knowledge_summary: knowledgeSummary.trim() || null,
         tag_ids: selectedTagIds,
+        source,
       };
       if (isEdit && id) {
         await updateQuestion(id, payload);
@@ -214,6 +229,18 @@ export default function QuestionFormPage() {
         <h1 className="text-lg font-semibold">
           {isEdit ? "Edit question" : "New question"}
         </h1>
+
+        {source === "ocr" && (
+          <div className="mt-3 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+            Draft from OCR — review every field before saving.
+            {ocrPrefill && !ocrPrefill.matched && (
+              <span className="mt-1 block text-amber-700">
+                Couldn&apos;t auto-split the options — separate the stem and
+                options manually below.
+              </span>
+            )}
+          </div>
+        )}
 
         <label className="mt-4 block text-sm font-medium text-gray-700">
           Type

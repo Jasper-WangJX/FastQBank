@@ -1,0 +1,14 @@
+# Python venv + caches
+.venv/
+__pycache__/
+*.pyc
+
+# PyInstaller build artifacts + staged models
+build/
+dist/
+_models/
+*.spec.bak
+
+# Local spike/test screenshots — may contain personal exam content
+test*.png
+samples/

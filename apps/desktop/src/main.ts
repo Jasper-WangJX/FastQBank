@@ -15,6 +15,16 @@
 import { app, BrowserWindow, Menu, Tray, nativeImage, protocol } from "electron";
 import { promises as fsp, statSync } from "node:fs";
 import path from "node:path";
+import {
+  getSidecarState,
+  ocrImage,
+  startSidecar,
+  stopSidecar,
+} from "./sidecar";
+import { cropToPng, grabScreen } from "./capture";
+import { captureRegion } from "./overlay";
+import { registerShortcut, unregisterShortcut } from "./shortcut";
+import { IPC, registerIpc } from "./ipc";
 
 const isDev = process.env.ELECTRON_DEV === "1";
 const DEV_SERVER_URL = "http://localhost:5173";
@@ -29,6 +39,9 @@ const APP_ORIGIN_URL = "app://aqb/";
 const WEB_DIST = app.isPackaged
   ? path.join(process.resourcesPath, "web-dist")
   : path.join(__dirname, "..", "..", "web", "dist");
+
+// Same preload script backs both the main window and the capture overlay.
+const PRELOAD = path.join(__dirname, "preload.js");
 
 // Minimal extension -> MIME map. Serving the bytes ourselves (rather than
 // proxying file:// through net.fetch) keeps Content-Type deterministic —
@@ -68,7 +81,7 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
-// Distinguishes a real quit (tray "退出" / app.quit) from a window close,
+// Distinguishes a real quit (tray "Quit" / app.quit) from a window close,
 // which we intercept to hide-to-tray instead.
 let isQuitting = false;
 
@@ -129,7 +142,7 @@ function createWindow(): void {
     height: 800,
     icon: path.join(__dirname, "..", "assets", "icon.png"),
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: PRELOAD,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -175,6 +188,65 @@ function toggleWindow(): void {
   }
 }
 
+// One capture at a time (the global shortcut can be spammed).
+let capturing = false;
+
+/**
+ * The screenshot -> OCR flow: grab the screen under the cursor, let the
+ * user rubber-band a region on the overlay, crop it, send it to the
+ * sidecar, and hand the OCRResult to the main window (the renderer then
+ * splits it and opens the prefilled confirm form). Bound to both the
+ * global shortcut and the in-app button.
+ */
+async function captureAndRecognize(): Promise<void> {
+  if (capturing) return;
+  const st = getSidecarState();
+  if (st !== "ready") {
+    showWindow();
+    mainWindow?.webContents.send(IPC.ocrError, {
+      error:
+        st === "starting"
+          ? "OCR engine is still starting — try again in a moment."
+          : "OCR engine is unavailable.",
+    });
+    return;
+  }
+  capturing = true;
+  try {
+    const { display, thumbnail } = await grabScreen();
+    const overlayUrl = isDev
+      ? `${DEV_SERVER_URL}/?overlay=1`
+      : `${APP_ORIGIN_URL}?overlay=1`;
+    const rect = await captureRegion({
+      display,
+      backgroundDataUrl: thumbnail.toDataURL(),
+      scaleFactor: display.scaleFactor,
+      preloadPath: PRELOAD,
+      overlayUrl,
+    });
+    if (!rect) return; // cancelled (Esc / clicked away)
+    // Overlay canvas == window.innerWidth/Height == this display's DIP
+    // bounds; cropToPng derives the real bitmap ratio from that.
+    const png = cropToPng(thumbnail, rect, {
+      width: display.bounds.width,
+      height: display.bounds.height,
+    });
+    if (!png) return; // selection too small — treat as a misclick
+    mainWindow?.webContents.send(IPC.ocrBusy, true);
+    const result = await ocrImage(png);
+    showWindow();
+    mainWindow?.webContents.send(IPC.ocrResult, result);
+  } catch (err) {
+    showWindow();
+    mainWindow?.webContents.send(IPC.ocrError, {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  } finally {
+    mainWindow?.webContents.send(IPC.ocrBusy, false);
+    capturing = false;
+  }
+}
+
 function createTray(): void {
   const icon = nativeImage.createFromPath(
     path.join(__dirname, "..", "assets", "tray.png"),
@@ -183,10 +255,10 @@ function createTray(): void {
   tray.setToolTip("AI Question Bank");
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "打开主窗", click: () => showWindow() },
+      { label: "Open", click: () => showWindow() },
       { type: "separator" },
       {
-        label: "退出",
+        label: "Quit",
         click: () => {
           isQuitting = true;
           app.quit();
@@ -211,6 +283,16 @@ if (!gotLock) {
     createWindow();
     createTray();
 
+    // OCR capture flow (roadmap stage 5).
+    registerIpc({ onTrigger: captureAndRecognize, getSidecarState });
+    void startSidecar();
+    const acc = registerShortcut(captureAndRecognize);
+    process.stderr.write(
+      acc
+        ? `[shortcut] capture bound to ${acc}\n`
+        : "[shortcut] no global hotkey free — use the in-app button\n",
+    );
+
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
@@ -220,8 +302,13 @@ if (!gotLock) {
     isQuitting = true;
   });
 
+  app.on("will-quit", () => {
+    unregisterShortcut();
+    stopSidecar();
+  });
+
   // Tray-resident: do NOT quit when the window is closed. App lifetime is
-  // controlled solely by the tray "退出" item.
+  // controlled solely by the tray "Quit" item.
   app.on("window-all-closed", () => {
     /* intentionally empty */
   });

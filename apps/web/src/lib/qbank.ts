@@ -58,6 +58,9 @@ export interface QuestionPayload {
   correct: string[];
   knowledge_summary?: string | null;
   tag_ids: string[];
+  // Defaults to "manual" server-side; the OCR confirm flow sends "ocr".
+  // Ignored by the backend on PUT (edit), so it's create-only in effect.
+  source?: "manual" | "ocr";
 }
 
 // --- Tags ---

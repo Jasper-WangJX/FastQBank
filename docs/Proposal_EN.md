@@ -32,8 +32,8 @@ MVP target platforms: **Windows desktop + Web**. Other platforms are deferred.
 - **Screen-region OCR**
   - Entry points: tray icon / floating pet widget / global hotkey (default `Ctrl+Shift+Q`)
   - Flow: trigger overlay → user drags selection → OCR extracts text → regex splits stem and options → user lands on a confirmation page to verify, edit, and pick the question type
-  - OCR engine: **PaddleOCR** (local subprocess, free, strong Chinese recognition)
-  - Splitting logic: regex for common formats `A. B. C. D.` / `A)` / `①②③④` / `（A）（B）`; LLM fallback when regex misses
+  - OCR engine: **PaddleOCR** (local subprocess, free, offline, fast; target users have English questions, so the English model)
+  - Splitting logic: regex for common **English** formats `A. B. C. D.` / `A)` / `(A)` / `1. 2.`; on miss, the whole text goes to the confirmation page for manual edits. **Markerless auto-splitting and formula / LaTeX recognition are handled by on-demand vision AI** (see §7, Phase 6)
 - **Manual input**: standard form with LaTeX string support (`$...$`)
 - **Question types**: single-choice / multi-choice / true-false (no fill-in-the-blank)
 - **Out of scope for v1**: error-prone option marking, AI explanations, images inside options
@@ -97,9 +97,9 @@ MVP target platforms: **Windows desktop + Web**. Other platforms are deferred.
 | Desktop shell | **Electron** | Mature support for screen capture, floating widgets, subprocesses |
 | Backend | **FastAPI (Python)** | Async, strong ecosystem, auto-generated OpenAPI |
 | Database | **PostgreSQL** | JSON columns + full-text search + relational modeling |
-| OCR | **PaddleOCR** (Python sidecar subprocess) | Markedly better Chinese recognition than Tesseract |
+| OCR | **PaddleOCR** (Python sidecar, English model) + **on-demand vision-AI fallback** | Local, free, offline; markerless / formula questions go to the vision model (see AI-model row) |
 | LaTeX rendering | **KaTeX** | Shared between Web and Electron |
-| AI model | **DeepSeek-V3** default + provider abstraction | Cheap, strong on Chinese |
+| AI model | Text **DeepSeek-V3**; vision **Gemini 2.0 Flash** (default, free tier) / **GPT-4o-mini** (alternative); one provider abstraction | Vision model called on-demand for OCR fallback + LaTeX, budget-friendly |
 | Rate limiting | **slowapi** + Redis (or Postgres counter table) | Per-user daily token + per-minute request quotas |
 | Auth | **JWT + bcrypt**, email + password | Email verification not enforced in MVP |
 | Deployment | Overseas VPS + Docker Compose + Caddy | Automatic HTTPS |
@@ -155,19 +155,24 @@ Field notes:
 
 ## 7. AI Strategy
 
-**Default model**: DeepSeek-V3
-- Input pricing ~CNY 1 per million tokens, strong Chinese, accessible from mainland
-- Calling from an overseas server adds ~200 ms cross-border latency — acceptable
+> The user is in **Canada, no access restrictions**; DeepSeek / OpenAI / Gemini are all reachable.
 
-**Abstraction layer**: define a `LLMProvider` interface so OpenRouter / Qwen / GPT can be swapped in.
+**Default text model**: DeepSeek-V3 — cheap and cost-effective, used for tag suggestion / knowledge summary / question generation.
 
-**Three call scenarios**:
+**Vision model**: **Gemini 2.0 Flash** (default, cheapest tier, free quota for personal use) / **GPT-4o-mini** (alternative), used by `parse-question`: markerless option splitting + formula / LaTeX recognition (the part local PaddleOCR cannot do).
+
+**Abstraction layer**: a `LLMProvider` interface with text / vision configured separately and swappable (OpenRouter / Qwen / GPT, …).
+
+**Budget principle**: local PaddleOCR stays the OCR default (free / offline); vision AI is **on-demand only** (regex split failed / formula likely / user clicks "Improve with AI"); downscale + grayscale before upload, pass the OCR text as a hint, cap `max_tokens`, reuse the daily token quota → negligible cost for personal use.
+
+**Four call scenarios**:
 
 | Scenario | When | Cost weight | Prompt essentials |
 |---|---|---|---|
-| Tag suggestion | At entry time | Light | Stem + existing tag list → top-3 |
-| Knowledge summary | At entry time | Light | Stem → 1-2 sentence summary |
-| Question generation | User-triggered | Heavy | Seed questions + knowledge → N new items as JSON |
+| Tag suggestion | At entry time | Light (text) | Stem + existing tag list → top-3 |
+| Knowledge summary | At entry time | Light (text) | Stem → 1-2 sentence summary |
+| Question generation | User-triggered | Heavy (text) | Seed questions + knowledge → N new items as JSON |
+| Question parse / fallback | On-demand on the confirm page (markerless / has formulas) | Medium (vision, on-demand) | Cropped screenshot (downscaled+grayscale) + OCR text hint → structured question + LaTeX |
 
 ---
 
@@ -194,13 +199,13 @@ Field notes:
 - AI question generation (5 per run, edit-and-confirm before import)
 - Cloud sync (LWW + soft delete)
 - JSON import / export
-- DeepSeek integration + server-side rate limiting
+- AI integration: text (DeepSeek-V3) + on-demand vision (Gemini 2.0 Flash / GPT-4o-mini) for OCR fallback and formula / LaTeX recognition + server-side rate limiting
 
 **v2**
 
 - Floating pet widget + customizable hotkeys
 - SRS spaced repetition
-- OCR for math formulas (Pix2Text)
+- Advanced / offline formula recognition (e.g. local Pix2Text, as an offline complement to v1's cloud vision AI)
 - Targeted wrong-answer review mode
 - macOS desktop
 

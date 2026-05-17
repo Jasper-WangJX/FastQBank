@@ -1,0 +1,8 @@
+# Pinned on purpose — see README "Stack". paddlepaddle 3.x regresses
+# oneDNN under its new executor on the target box (forces mkldnn off,
+# ~4-5s/image); 2.6.2 keeps the fast CPU path and the well-documented
+# .ocr(img, cls=True) API with far better PyInstaller prior art.
+paddlepaddle==2.6.2
+paddleocr==2.9.1
+# numpy 2.x breaks paddlepaddle 2.6.2 — pin to what paddleocr resolves.
+numpy==1.26.4

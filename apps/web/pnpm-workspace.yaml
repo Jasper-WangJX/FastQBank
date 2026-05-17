@@ -1,0 +1,5 @@
+allowBuilds:
+  esbuild: true
+# `pnpm <script>` re-runs an install pre-check; with esbuild's build
+# script gated that check exits non-zero. Skip it like apps/desktop does.
+verifyDepsBeforeRun: false

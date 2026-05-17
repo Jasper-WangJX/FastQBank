@@ -122,9 +122,10 @@ class QuestionIn(BaseModel):
     correct: list[str]
     knowledge_summary: str | None = None
     tag_ids: list[UUID] = []
-    # Kept so OCR (stage 5) / AI (stage 8) can reuse this schema; stage 2
-    # only ever sends "manual".
-    source: Literal["manual"] = "manual"
+    # Stage 2 only ever sends "manual"; stage 5 sends "ocr" for
+    # screenshot-captured questions and stage 8 will send "ai". The DB
+    # CHECK constraint already allows all three.
+    source: Literal["manual", "ocr", "ai"] = "manual"
 
     @model_validator(mode="after")
     def _check_consistency(self) -> "QuestionIn":

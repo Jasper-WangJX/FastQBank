@@ -7,3 +7,6 @@ docker compose ps
 ## 开后端
 cd "D:\jasper\Documents\Coding\my_projects\AI-assisted question bank\apps\server"
 .venv\Scripts\uvicorn.exe main:app --reload --port 8000
+
+## 进入虚拟环境
+.venv\Scripts\activate.bat

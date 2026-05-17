@@ -25,8 +25,8 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 | 2 Question / tag CRUD (manual entry) | ✅ Done (2026-05-16) | Web client can create tags, enter questions, list them, render LaTeX |
 | 3 Cloud sync + soft delete + minimal prod | ✅ Done (2026-05-17) | Deployed to VPS, domain reachable, cross-device consistency |
 | 4 Electron shell | ✅ Done (2026-05-17) | Desktop app boots, reuses web build, tray icon |
-| 5 OCR entry pipeline | ⬜ Todo | Region capture → OCR → split → confirmation page → save |
-| 6 AI integration | ⬜ Todo | Tag suggestion + knowledge summary + rate limiting |
+| 5 OCR entry pipeline | ✅ Done (2026-05-17) | Region capture → OCR → split → confirmation page → save |
+| 6 AI integration | ⬜ Todo | Tag suggestion + knowledge summary + rate limiting; on-demand vision AI for markerless split + LaTeX |
 | 7 Flashcards + wrong-set | ⬜ Todo | Card-based drill, reveal/hide, shuffle, auto-collected wrong set |
 | 8 AI generation | ⬜ Todo | Seed selection → preview page → import + three drill modes |
 | 9 JSON import / export | ⬜ Todo | Full export, dedup-by-UUID import |
@@ -177,14 +177,27 @@ Launching the desktop icon opens the app, all features behave identically to the
 
 ## Phase 5 — OCR Entry Pipeline (the hardest part of v1)
 
-**Strongly recommended: do a 30-minute spike first** — a standalone Python script invoking PaddleOCR on a real screenshot. If accuracy is poor, evaluate alternatives (e.g. calling a GPT-4o vision API directly) immediately.
+> **Status: ✅ Done (2026-05-17).** Dev end-to-end accepted (hotkey/button → overlay selection → OCR → split → prefilled confirm page → save with `source='ocr'`); the packaged sidecar exe is **hard-verified offline** (`model_loaded:true`, test1/test3 recognized, bad token → 401, ~0.5s warm). **The full electron-builder packaged-app end-to-end smoke is handed to Phase 10** (see its tasks).
+
+#### As-built notes (deviations from the original plan)
+- **Decision-gate spike**: PaddleOCR 3.x's oneDNN crashes under the new executor → downgraded to **pinned paddlepaddle 2.6.2 + paddleocr 2.9.1**, `enable_mkldnn=True` gives 0.2–0.55s/image warm; `lang="en"` (target users have English questions; i18n scope fixed as **English-only, no i18n framework**).
+- **Sidecar**: `packages/ocr-sidecar/ocr_server.py`, local `127.0.0.1` HTTP (not stdio — paddle's logging corrupts stdio framing), `/healthz` + `/ocr`, random `X-OCR-Token`, background model preload, reading-order sorted output.
+- **Splitter**: a pure frontend function `apps/web/src/lib/ocr/splitter.ts` (English markers `A.`/`A)`/`(A)`/`1.`, takes the first question in a multi-question shot, **honest fallback** `matched:false` dumping the whole text into the confirm page when there are no reliable markers — no forced mis-split for the user to undo); **vitest** introduced, 14 tests green (`apps/web` pnpm-workspace adjusted).
+- **Electron**: `main.ts` split into `sidecar/capture/overlay/shortcut/ipc` modules; three-tier global hotkey fallback `Ctrl+Shift+Q → Alt+Q → F8`; screenshot grabbed at physical px, crop using the **real bitmap ratio + padding** (fixed a selection/crop ratio mismatch that dropped the last line); overlay window made **opaque + forced full-screen** (fixed the Windows transparent-window work-area clamp that caused "two taskbars / squashed screen"); `preload.ts` gained the `ocr`/`overlay` IPC bridge (sandbox kept on); tray menu de-Chinesed to English.
+- **Confirm page**: reuses the Phase 2 `QuestionFormPage`, prefilled via React Router `state` (never hits the URL, zero impact on edit/manual paths), `source:'ocr'`, a "Draft from OCR" banner + an unmatched hint. **The only backend change**: `schemas.py` widened `source` to `Literal["manual","ocr","ai"]` (the DB CHECK already allowed all three — **no migration**).
+- **Packaging**: PyInstaller **onedir** (paddle is hundreds of MB; onedir is more reliable and faster), models staged into the bundle and read at runtime from `sys._MEIPASS/models` — offline, zero download; iteratively filled PyInstaller misses (Cython data / the `tools`·`ppocr`·`ppstructure` top-level packages); electron-builder `extraResources` + `package.json` `build:sidecar` wired, path-consistent with `sidecar.ts`'s packaged branch.
+- **Deferred**: markerless auto-splitting + formula/LaTeX recognition are handled by **Phase 6's on-demand vision AI** as planned (this phase is regex + manual fallback only).
+
+---
+
+**Strongly recommended: do a 30-minute spike first** — a standalone Python script invoking PaddleOCR on a real screenshot to gauge text accuracy. Note this phase **only** handles ordinary "lettered, no-formula" questions; **markerless option splitting and formula / LaTeX recognition are out of scope here** and deferred to Phase 6's "on-demand vision AI" (see Phase 6).
 
 ### Tasks
 - `packages/ocr-sidecar`: Python script taking an image path, outputting JSON (text + coordinates)
 - Electron spawns this Python subprocess on startup, communicates over stdio or `localhost:port`
 - Capture overlay: a transparent fullscreen Electron window + Canvas for region selection + `desktopCapturer.getSources()` to grab the screen image
 - Global hotkey: `globalShortcut.register('Ctrl+Shift+Q', ...)`
-- Splitting logic: regex matching common formats `A. B. C. D.`, `①②③④`, `（A）（B）`; on miss, drop the entire text into the form for manual edits
+- Splitting logic: regex matching common **English** formats `A. B. C. D.` / `A)` / `(A)` / `1. 2.` (target users have English questions — CJK-only markers dropped); on miss, drop the entire text into the confirmation page for manual edits. **Markerless auto-splitting and LaTeX recognition are NOT in this phase — deferred to Phase 6's on-demand vision AI**
 - Confirmation page: pre-fills the Phase 2 entry form for the user to edit, pick type, attach tags, save
 
 ### Exit criteria
@@ -194,17 +207,23 @@ Open any quiz screenshot on screen, press the hotkey, drag a region; the confirm
 
 ## Phase 6 — AI Integration
 
+> User location: **Canada, no access restrictions** (DeepSeek / OpenAI / Gemini all reachable).
+> Design principle: local PaddleOCR stays the OCR default (free, offline, fast); **AI is on-demand only**, keeping cost negligible for a personal project.
+
 ### Tasks
-- Backend: a `llm_provider.py` interface + DeepSeek implementation; API key via env var
-- Three endpoints:
-  - `POST /ai/suggest-tags`: stem + user's tag list → top-3
-  - `POST /ai/knowledge-summary`: stem + options → summary string
-  - `POST /ai/generate`: array of seed questions → array of new questions as JSON
+- Backend: a `llm_provider.py` interface; **text tasks** use DeepSeek-V3, **vision tasks** use a budget vision model (default **Gemini 2.0 Flash**, has a free tier; alternative **GPT-4o-mini**); API keys via env vars
+- Four endpoints:
+  - `POST /ai/suggest-tags`: stem + user's tag list → top-3 (text)
+  - `POST /ai/knowledge-summary`: stem + options → summary string (text)
+  - `POST /ai/generate`: array of seed questions → array of new questions as JSON (text)
+  - `POST /ai/parse-question`: a **cropped screenshot** (downscaled + grayscale) + the PaddleOCR text as a hint → structured `{stem, type, options[]}` with **LaTeX preserved**. One vision call solves both: ① option splitting when there are no A/B/C/D markers; ② formula / LaTeX that OCR loses
+- **On-demand trigger (the cost lever)**: `/ai/parse-question` is called only when regex splitting failed (`matched=false`), a formula is likely, or the user clicks "Improve with AI" on the confirmation page; ordinary questions stay on local PaddleOCR + regex with zero API spend
+- **Cost controls**: downscale + grayscale before upload (long side ≤ ~1000px); pass the OCR text as a hint to shrink tokens / allow a text-only path when there are no formulas; cap `max_tokens`; reuse the rate limit + daily token cap below
 - **Rate limiting**: slowapi (per-user request rate) + a counter table (or Redis) tracking daily token consumption
-- Frontend: entry form auto-calls `suggest-tags` and `knowledge-summary` before submission; results populate fields the user can still edit
+- Frontend: entry form auto-calls `suggest-tags` and `knowledge-summary` before submission (user-editable); the confirmation page gains an "Improve with AI" button that triggers `parse-question`, with editable results
 
 ### Exit criteria
-Enter a new question; AI auto-suggests tags and writes a knowledge summary; the token counter on the backend increments.
+Enter a new question; AI auto-suggests tags and writes a knowledge summary; the backend token counter increments. For a screenshot with **no A/B/C/D markers** or **containing formulas**, clicking "Improve with AI" yields a confirmation page with correctly split options and correct LaTeX.
 
 ---
 
@@ -250,6 +269,7 @@ Export to JSON, wipe the questions from DB, re-import, everything restored.
 
 ### Tasks
 - Configure electron-builder → `.exe` installer (code signing optional for personal projects)
+- **Packaged-app end-to-end smoke (handed over from Phase 5)**: run the full `pnpm --dir apps/desktop package` and verify ① electron-builder copies the onedir sidecar into `resources/ocr-sidecar`; ② the packaged app starts the sidecar via the `app.isPackaged` path (dev uses venv python — this path has never run); ③ offline screenshot → OCR → save; ④ no orphan `ocr_server.exe` process tree after quit
 - Error UX: API failure toasts, offline notice
 - Lightweight onboarding (first-time login guides through creating a tag and entering one question)
 - README with development, deployment, and env-var documentation
@@ -265,6 +285,6 @@ Hand the `.exe` to a friend; they install it, log in, enter and review questions
 |---|---|---|
 | PaddleOCR accuracy on your typical question sources | During phases 0-1, 30-minute spike | Run it locally on 10 real quiz screenshots, measure accuracy |
 | Electron spawning a Python subprocess after packaging | End of phase 4 with a minimal echo demo | Subprocess just returns "hello" — verify IPC, not business logic |
-| DeepSeek API latency from the overseas server | Before phase 6, a single curl test | One curl call to the API, observe RTT and success rate |
+| LLM / vision API latency and cost | Before phase 6, one curl test each | Call text (DeepSeek-V3) and vision (Gemini 2.0 Flash / GPT-4o-mini) once each; observe RTT, success rate, per-question token cost |
 | Global hotkey collisions on different Windows setups | Phase 5 | Try Ctrl+Shift+Q, Alt+Q, F8 and a few fallbacks |
 
