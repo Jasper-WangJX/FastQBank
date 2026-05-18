@@ -48,6 +48,10 @@ export default function AppLayout() {
             type: draft.type,
             options: draft.options,
             matched: draft.matched,
+            // Carried for the confirm form's "Improve with AI" button
+            // (stage-6 vision fallback): original crop + raw OCR text.
+            imageB64: r.image_b64,
+            ocrText: r.lines.map((l) => l.text).join("\n"),
           },
         },
       });

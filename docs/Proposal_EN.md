@@ -99,7 +99,7 @@ MVP target platforms: **Windows desktop + Web**. Other platforms are deferred.
 | Database | **PostgreSQL** | JSON columns + full-text search + relational modeling |
 | OCR | **PaddleOCR** (Python sidecar, English model) + **on-demand vision-AI fallback** | Local, free, offline; markerless / formula questions go to the vision model (see AI-model row) |
 | LaTeX rendering | **KaTeX** | Shared between Web and Electron |
-| AI model | Text **DeepSeek-V3**; vision **Gemini 2.0 Flash** (default, free tier) / **GPT-4o-mini** (alternative); one provider abstraction | Vision model called on-demand for OCR fallback + LaTeX, budget-friendly |
+| AI model | Text **DeepSeek-V3**; vision **Gemini 2.5 Flash-Lite** (default, free tier) / **GPT-4o-mini** (alternative); one provider abstraction | Vision model called on-demand for OCR fallback + LaTeX, budget-friendly |
 | Rate limiting | **slowapi** + Redis (or Postgres counter table) | Per-user daily token + per-minute request quotas |
 | Auth | **JWT + bcrypt**, email + password | Email verification not enforced in MVP |
 | Deployment | Overseas VPS + Docker Compose + Caddy | Automatic HTTPS |
@@ -159,11 +159,14 @@ Field notes:
 
 **Default text model**: DeepSeek-V3 — cheap and cost-effective, used for tag suggestion / knowledge summary / question generation.
 
-**Vision model**: **Gemini 2.0 Flash** (default, cheapest tier, free quota for personal use) / **GPT-4o-mini** (alternative), used by `parse-question`: markerless option splitting + formula / LaTeX recognition (the part local PaddleOCR cannot do).
+**Vision model**: **Gemini 2.5 Flash-Lite** (default, cheapest tier, free quota for personal use) / **GPT-4o-mini** (alternative), used by `parse-question`: markerless option splitting + formula / LaTeX recognition (the part local PaddleOCR cannot do).
+> Note: originally planned as Gemini 2.0 Flash, but its bare alias is retired by Google for new API keys (completions 404), so the default is `gemini-2.5-flash-lite`; swapping models is just the `VISION_MODEL` env var.
 
-**Abstraction layer**: a `LLMProvider` interface with text / vision configured separately and swappable (OpenRouter / Qwen / GPT, …).
+**Abstraction layer**: one `OpenAICompatProvider` (in `apps/server/app/llm/`, purely server-side — a deliberate deviation from the roadmap's literal `packages/llm_provider.py`); text / vision each configured via `*_API_KEY`/`*_BASE_URL`/`*_MODEL` env vars and swappable (DeepSeek / OpenRouter / Qwen / GPT, …).
 
 **Budget principle**: local PaddleOCR stays the OCR default (free / offline); vision AI is **on-demand only** (regex split failed / formula likely / user clicks "Improve with AI"); downscale + grayscale before upload, pass the OCR text as a hint, cap `max_tokens`, reuse the daily token quota → negligible cost for personal use.
+
+**As-built notes (Phase 6 done 2026-05-17)**: 5 endpoints shipped — `/ai/suggest-tags`, `/ai/knowledge-summary`, `/ai/generate`, `/ai/parse-question`, `/ai/usage` (token counter). Tag suggestion / knowledge summary are **explicit-button** triggered on the entry form (user edits, then saves) rather than auto-called on submit, cutting cost further. `/ai/generate` is **backend-only** this phase; the generation preview UI is deferred to Phase 8. Metering & limits: `ai_usage` table (per user per day) + daily token cap + slowapi per-user per-minute limiter, 429 on excess; missing key → 503 (app still boots). Prompts enforce **strict LaTeX**: every formula / variable / expression wrapped in `$...$` (e.g. `$(x+1)^3$`) except a bare standalone number with no variable or operator — consistent across text and vision endpoints.
 
 **Four call scenarios**:
 
@@ -199,7 +202,7 @@ Field notes:
 - AI question generation (5 per run, edit-and-confirm before import)
 - Cloud sync (LWW + soft delete)
 - JSON import / export
-- AI integration: text (DeepSeek-V3) + on-demand vision (Gemini 2.0 Flash / GPT-4o-mini) for OCR fallback and formula / LaTeX recognition + server-side rate limiting
+- AI integration: text (DeepSeek-V3) + on-demand vision (Gemini 2.5 Flash-Lite / GPT-4o-mini) for OCR fallback and formula / LaTeX recognition + server-side rate limiting
 
 **v2**
 

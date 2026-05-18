@@ -26,7 +26,7 @@
 | 3 云端同步 + 软删除 + 部署小环境 | ✅ 已完成 (2026-05-17) | 部署到 VPS、域名可访问、多端拉取一致 |
 | 4 Electron 壳 | ✅ 已完成 (2026-05-17) | 桌面端能跑，复用 web 构建 + 托盘图标 |
 | 5 OCR 录题链路 | ✅ 已完成 (2026-05-17) | 框选截屏 → OCR → 拆分 → 确认页入库 |
-| 6 AI 接入 | ⬜ 待办 | 标签推荐 + 知识点摘要 + 限流；按需视觉 AI 做无标号拆分 + LaTeX |
+| 6 AI 接入 | ✅ 已完成 (2026-05-17) | 标签推荐 + 知识点摘要 + 限流；按需视觉 AI 做无标号拆分 + LaTeX |
 | 7 Flashcards 复习 + 错题集 | ⬜ 待办 | 卡片式过题、显隐答案、乱序、错题自动归集 |
 | 8 AI 出题 | ⬜ 待办 | 种子选择 → 预览页 → 入库 + 三种过题模式 |
 | 9 JSON 导入导出 | ⬜ 待办 | 导出全量、导入按 UUID 跳过重复 |
@@ -180,6 +180,8 @@
 ---
 
 ## 阶段 6 — AI 接入
+
+> **状态：✅ 已完成 (2026-05-17)。** 后端 5 个端点全部真实跑通：`/ai/suggest-tags`、`/ai/knowledge-summary`、`/ai/generate`、`/ai/parse-question`（视觉）、`/ai/usage`（计数器，为退出标准新增）。接入层落在 `apps/server/app/llm/`（**有意偏离**路线图字面的 `packages/llm_provider.py` —— 纯服务端消费、与 `app/security.py` 同构、可直接 import）：单一 `OpenAICompatProvider` 同时驱动 DeepSeek-V3（文本）与 Gemini（视觉，均走 OpenAI 兼容接口）；缺 key → 503，应用照常启动。**视觉模型偏离**：路线图的 `gemini-2.0-flash` 裸别名 Google 已对新 API key 停用（completions 调用 404），默认改用 `gemini-2.5-flash-lite`（最便宜、有免费额度、支持视觉），`VISION_MODEL` 可覆盖、无需改代码。计量与限流：新增 `ai_usage` 表（迁移 `0002`，按用户按天 PG `ON CONFLICT` 原子累加）+ 每日 token 上限 + slowapi 按用户每分钟限流，超额均 429。前端两个按钮均**点击触发、不自动花钱**：「AI: suggest tags + summary」回填可改字段；「Improve with AI」用桌面带过来的裁剪图调视觉端点拆无标号选项 + 恢复 LaTeX。Prompt 强制**严格 LaTeX**（除无变量无运算符的单独数字外，所有公式包 `$...$`）。`.env` 在仓库根目录；新增依赖 `openai`/`slowapi`/`Pillow`/`python-multipart`。验证：四文本 + 视觉端点真实 DeepSeek/Gemini 调通、token 累加、限流/每日上限 429、无 key 503 全实测；前端 `tsc`/`vitest`(16 绿)/`build`/`lint` 全过。**移交**：`/ai/generate` 仅建后端、出题预览 UI → 阶段 8；真实 GUI 点按钮 + 桌面截图链路走查 → 阶段 10 打磨态一并复核。
 
 > 用户地理位置：**加拿大，无访问限制**（DeepSeek / OpenAI / Gemini 均可直连）。
 > 设计原则：本地 PaddleOCR 仍是 OCR 默认（免费、离线、快）；**AI 仅按需介入**，把成本压到个人项目可忽略。

@@ -18,6 +18,9 @@ export interface OcrResult {
   image: { width: number; height: number };
   lines: OcrLine[];
   elapsed_ms: number;
+  /** base64 PNG of the cropped screenshot (main.ts attaches it so the
+   *  confirm form can call /ai/parse-question without re-capturing). */
+  image_b64?: string;
 }
 
 export interface OcrErrorPayload {
@@ -45,6 +48,10 @@ export interface OcrPrefill {
   type: QuestionType;
   options: Option[];
   matched: boolean;
+  /** Carried so the confirm form's "Improve with AI" button can POST
+   *  the original crop + OCR text to /ai/parse-question (stage 6). */
+  imageB64?: string;
+  ocrText?: string;
 }
 
 export interface DesktopBridge {

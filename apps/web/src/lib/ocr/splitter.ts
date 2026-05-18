@@ -49,6 +49,16 @@ const JUDGE_OPTIONS: Option[] = [
   { label: "F", content: "False" },
 ];
 
+// Cheap heuristic: does this text look like it contains math the local
+// OCR likely mangled? Used ONLY to nudge the user toward "Improve with
+// AI" on the confirm page (stage 6) — never to auto-spend an API call.
+const FORMULA_HINT =
+  /(\\[a-zA-Z]+|\$.*\$|[=≤≥≠≈±×÷√∑∫∞πθ]|\^\s*\S|_\s*\{|\d\s*\/\s*\d|\bfrac\b|\bsqrt\b|\b(sin|cos|tan|log|lim|integral)\b)/;
+
+export function looksLikeFormula(text: string): boolean {
+  return FORMULA_HINT.test(text);
+}
+
 function blank(stem = "", matched = false): SplitResult {
   return {
     stem,

@@ -72,12 +72,20 @@ export async function apiFetch<T = unknown>(
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
+  return handleResponse<T>(res);
+}
+
+/**
+ * Shared post-fetch handling for both transports: 401 -> clear token +
+ * emit UNAUTHORIZED_EVENT; parse JSON (tolerating empty 204 bodies);
+ * non-2xx -> ApiError carrying the backend's `detail`.
+ */
+async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) {
     clearToken();
     window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   }
 
-  // Tolerate empty bodies (e.g. 204) — only parse when there is content.
   const raw = await res.text();
   const data: unknown = raw ? JSON.parse(raw) : null;
 
@@ -90,4 +98,27 @@ export async function apiFetch<T = unknown>(
   }
 
   return data as T;
+}
+
+/**
+ * Multipart sibling of apiFetch for /ai/parse-question (cropped image +
+ * OCR text). Deliberately does NOT set Content-Type: the browser must
+ * add the multipart boundary itself. Reuses the same auth header, 401
+ * interceptor and ApiError contract.
+ */
+export async function apiFetchForm<T = unknown>(
+  path: string,
+  form: FormData,
+): Promise<T> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+
+  return handleResponse<T>(res);
 }

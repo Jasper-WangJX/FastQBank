@@ -1,9 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.db import engine
-from app.routers import auth, questions, tags
+from app.ratelimit import limiter
+from app.routers import ai, auth, questions, tags
 from app.settings import get_settings
 
 settings = get_settings()
@@ -13,6 +16,13 @@ settings = get_settings()
 # imported above — `from app.xxx import` always resolves the package, not
 # this module-level variable.
 app = FastAPI(title="AI Question Bank API")
+
+# slowapi (stage 6): the /ai routes decorate themselves with
+# @limiter.limit(...). The limiter must hang off app.state and a 429
+# handler must be registered for those decorators to take effect; this
+# is inert for every non-/ai route.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS: a browser blocks cross-origin requests unless the server opts in.
 # The origin list now comes from settings so it lives in exactly one place.
@@ -31,6 +41,8 @@ app.include_router(auth.router)
 # Stage 2 — tag tree + question CRUD
 app.include_router(tags.router)
 app.include_router(questions.router)
+# Stage 6 — AI endpoints (text now; vision parse-question in step 5)
+app.include_router(ai.router)
 
 
 # Liveness probe: the front-end HealthCheck component calls this on

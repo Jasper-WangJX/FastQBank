@@ -202,3 +202,87 @@ class QuestionListOut(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# ---------------------------------------------------------------------------
+# Stage 6 — AI endpoint schemas
+# ---------------------------------------------------------------------------
+
+
+class SuggestTagsIn(BaseModel):
+    """Body for POST /ai/suggest-tags. The server reads the user's own
+    tag list itself (it has db + user), so the client only sends the
+    question text; options are optional context."""
+
+    stem: str = Field(min_length=1)
+    options: list[OptionIn] = []
+
+
+class SuggestedTag(BaseModel):
+    """A suggestion resolved back to a real owned tag so the form can
+    pre-select it by id (the model only ever returns existing names)."""
+
+    id: UUID
+    name: str
+    path: str
+
+
+class SuggestTagsOut(BaseModel):
+    tags: list[SuggestedTag]
+
+
+class KnowledgeSummaryIn(BaseModel):
+    """Body for POST /ai/knowledge-summary."""
+
+    stem: str = Field(min_length=1)
+    options: list[OptionIn] = []
+
+
+class KnowledgeSummaryOut(BaseModel):
+    summary: str
+
+
+class GenerateIn(BaseModel):
+    """Body for POST /ai/generate. Endpoint only this phase — the seed
+    picker / preview UI lands in stage 8."""
+
+    seed_question_ids: list[UUID] = Field(min_length=1)
+    count: int = Field(default=5, ge=1, le=10)
+
+
+class GeneratedQuestion(BaseModel):
+    """One model-produced draft. `valid` reflects the stage-2 QuestionIn
+    cross-field rules; the stage-8 UI will let the user fix invalid ones
+    before import, so a bad draft is surfaced, not dropped."""
+
+    stem: str
+    type: str
+    options: list[OptionOut]
+    correct: list[str]
+    valid: bool
+    validation_error: str | None = None
+
+
+class GenerateOut(BaseModel):
+    questions: list[GeneratedQuestion]
+
+
+class ParseQuestionOut(BaseModel):
+    """Response of POST /ai/parse-question (vision, stage 6 step 5).
+    Mirrors the OCR splitter's SplitResult so the confirm form fills the
+    same way. `matched` is always true here (the AI did structure it)."""
+
+    stem: str
+    type: QuestionType
+    options: list[OptionOut]
+    matched: bool = True
+
+
+class AiUsageOut(BaseModel):
+    """Today's per-user AI spend — backs the stage-6 exit criterion
+    'token counter visible in the backend' and the remaining-quota hint
+    in the form."""
+
+    total_tokens: int
+    request_count: int
+    limit: int

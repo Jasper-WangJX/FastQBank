@@ -28,3 +28,17 @@ PyYAML==6.0.3
 PyJWT~=2.10
 bcrypt~=4.3
 email-validator~=2.2
+
+# --- Stage 6: AI integration (new) ---
+# openai SDK drives BOTH providers: DeepSeek (text) and Gemini (vision)
+# expose OpenAI-compatible Chat Completions, so one AsyncOpenAI client
+# differing only by base_url/api_key/model covers both. httpx ships as a
+# transitive dep of openai (not pinned here on purpose).
+openai>=1.40,<2
+# Per-user request-rate cap (the daily token cap is self-built in app.llm).
+slowapi~=0.1
+# Server-side image downsample + grayscale before any vision call.
+Pillow~=11.0
+# Required by FastAPI to parse the multipart upload in /ai/parse-question
+# (the cropped screenshot + the OCR text hint).
+python-multipart~=0.0.20

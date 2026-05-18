@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitQuestion } from "./splitter";
+import { looksLikeFormula, splitQuestion } from "./splitter";
 
 describe("splitQuestion — lettered markers (the reliable path)", () => {
   it("splits 'A. B. C. D.' and keeps only the FIRST question", () => {
@@ -182,5 +182,22 @@ describe("splitQuestion — honest fallback (no reliable markers)", () => {
       "Name the capital of Japan",
     );
     expect(splitQuestion(["2) Define entropy"]).stem).toBe("Define entropy");
+  });
+});
+
+describe("looksLikeFormula — nudge toward 'Improve with AI'", () => {
+  it("flags math-ish text", () => {
+    expect(looksLikeFormula("Evaluate $\\int x^2 dx$")).toBe(true);
+    expect(looksLikeFormula("Solve x^2 = 4")).toBe(true);
+    expect(looksLikeFormula("What is 3/4 of 12?")).toBe(true);
+    expect(looksLikeFormula("Compute the lim of sin(x)/x")).toBe(true);
+    expect(looksLikeFormula("Area of a circle with radius r (use √)")).toBe(
+      true,
+    );
+  });
+
+  it("leaves plain prose alone", () => {
+    expect(looksLikeFormula("Which planet is the largest?")).toBe(false);
+    expect(looksLikeFormula("The capital of Japan is Tokyo")).toBe(false);
   });
 });

@@ -26,7 +26,7 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 | 3 Cloud sync + soft delete + minimal prod | ✅ Done (2026-05-17) | Deployed to VPS, domain reachable, cross-device consistency |
 | 4 Electron shell | ✅ Done (2026-05-17) | Desktop app boots, reuses web build, tray icon |
 | 5 OCR entry pipeline | ✅ Done (2026-05-17) | Region capture → OCR → split → confirmation page → save |
-| 6 AI integration | ⬜ Todo | Tag suggestion + knowledge summary + rate limiting; on-demand vision AI for markerless split + LaTeX |
+| 6 AI integration | ✅ Done (2026-05-17) | Tag suggestion + knowledge summary + rate limiting; on-demand vision AI for markerless split + LaTeX |
 | 7 Flashcards + wrong-set | ⬜ Todo | Card-based drill, reveal/hide, shuffle, auto-collected wrong set |
 | 8 AI generation | ⬜ Todo | Seed selection → preview page → import + three drill modes |
 | 9 JSON import / export | ⬜ Todo | Full export, dedup-by-UUID import |
@@ -206,6 +206,8 @@ Open any quiz screenshot on screen, press the hotkey, drag a region; the confirm
 ---
 
 ## Phase 6 — AI Integration
+
+> **Status: ✅ Done (2026-05-17).** All 5 backend endpoints verified live against real DeepSeek/Gemini: `/ai/suggest-tags`, `/ai/knowledge-summary`, `/ai/generate`, `/ai/parse-question` (vision), `/ai/usage` (token counter, added for the exit criterion). The access layer lives in `apps/server/app/llm/` (a **deliberate deviation** from the roadmap's literal `packages/llm_provider.py` — purely server-side, isomorphic to `app/security.py`, directly importable): one `OpenAICompatProvider` drives both DeepSeek-V3 (text) and Gemini (vision) over OpenAI-compatible APIs; a missing key → 503, the app still boots. **Vision-model deviation**: the roadmap's bare `gemini-2.0-flash` alias is retired by Google for new API keys (completions 404), so the default is `gemini-2.5-flash-lite` (cheapest, free quota, vision-capable), overridable via `VISION_MODEL` with no code change. Metering & limits: new `ai_usage` table (migration `0002`, per-user-per-day atomic PG `ON CONFLICT` upsert) + a daily token cap + slowapi per-user per-minute rate limit, both 429 on excess. Both frontend buttons are **click-triggered, never auto-spend**: "AI: suggest tags + summary" fills editable fields; "Improve with AI" sends the desktop's carried crop to the vision endpoint to split markerless options + recover LaTeX. Prompts enforce **strict LaTeX** (every formula in `$...$` except a bare standalone number). `.env` is at the repo root; new deps `openai`/`slowapi`/`Pillow`/`python-multipart`. Verified: four text + vision endpoints live, token accrual, rate-limit/daily-cap 429, no-key 503; frontend `tsc`/`vitest` (16 green)/`build`/`lint` all pass. **Handed off**: `/ai/generate` is backend-only — the generation preview UI → Phase 8; the real GUI button + desktop-screenshot walkthrough → re-checked in Phase 10 polish.
 
 > User location: **Canada, no access restrictions** (DeepSeek / OpenAI / Gemini all reachable).
 > Design principle: local PaddleOCR stays the OCR default (free, offline, fast); **AI is on-demand only**, keeping cost negligible for a personal project.

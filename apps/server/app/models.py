@@ -15,16 +15,19 @@ Design notes:
   a value later is a one-line CHECK change vs a fragile ALTER TYPE.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID as PyUUID
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
@@ -171,3 +174,33 @@ class GenSession(Base):
     created_at: Mapped[datetime] = _now_column()
 
     __table_args__ = (Index("ix_gen_sessions_user_id", "user_id"),)
+
+
+class AiUsage(Base):
+    """Per-user, per-UTC-day AI token meter (stage 6).
+
+    One row per (user_id, day); the router upserts with PG ON CONFLICT
+    (`uq_ai_usage_user_day`), adding tokens and bumping request_count.
+    This backs both the per-user daily token cap and the /ai/usage
+    counter the stage-6 exit criterion requires. The unique constraint
+    creates the index used for the today-lookup, so no extra Index().
+    """
+
+    __tablename__ = "ai_usage"
+
+    id: Mapped[PyUUID] = _uuid_pk()
+    user_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    total_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    request_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    updated_at: Mapped[datetime] = _now_column()
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "day", name="uq_ai_usage_user_day"),
+    )

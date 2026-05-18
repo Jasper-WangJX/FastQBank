@@ -15,6 +15,12 @@ import {
   type Tag,
 } from "../lib/qbank";
 import type { OcrPrefill } from "../lib/desktop";
+import {
+  knowledgeSummary as aiKnowledgeSummary,
+  parseQuestion,
+  suggestTags,
+} from "../lib/ai";
+import { looksLikeFormula } from "../lib/ocr/splitter";
 import Latex from "../components/Latex";
 
 const JUDGE_OPTIONS: Option[] = [
@@ -62,6 +68,12 @@ export default function QuestionFormPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Stage-6 AI: all on-demand (button-triggered), never automatic.
+  const [aiBusy, setAiBusy] = useState<"suggest" | "parse" | null>(null);
+  const [aiNote, setAiNote] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [improvedByAi, setImprovedByAi] = useState(false);
 
   // Load tags, and (edit mode) the question to prefill.
   useEffect(() => {
@@ -209,6 +221,84 @@ export default function QuestionFormPage() {
     }
   }
 
+  // Options the AI tasks should see: trimmed, empties dropped (the
+  // backend OptionIn rejects empty content with a 422).
+  function aiOptionsPayload(): Option[] {
+    return options
+      .map((o) => ({ label: o.label, content: o.content.trim() }))
+      .filter((o) => o.content.length > 0);
+  }
+
+  // "AI: suggest tags + summary" — fills editable fields the user then
+  // reviews; only pre-selects from the user's OWN tags (server-resolved).
+  async function onAiSuggest() {
+    if (!stem.trim() || aiBusy) return;
+    setAiError(null);
+    setAiNote(null);
+    setAiBusy("suggest");
+    try {
+      const opts = aiOptionsPayload();
+      const hadSummary = knowledgeSummary.trim().length > 0;
+      const [tg, ks] = await Promise.all([
+        suggestTags(stem.trim(), opts),
+        aiKnowledgeSummary(stem.trim(), opts),
+      ]);
+      if (tg.tags.length) {
+        const ids = tg.tags.map((t) => t.id);
+        setSelectedTagIds((cur) => Array.from(new Set([...cur, ...ids])));
+      }
+      const s = ks.summary.trim();
+      if (s) setKnowledgeSummary(s);
+      const notes: string[] = [];
+      if (tg.tags.length)
+        notes.push(`tags ${tg.tags.map((t) => t.name).join(", ")}`);
+      if (s) notes.push(hadSummary ? "summary replaced" : "summary filled");
+      setAiNote(
+        notes.length
+          ? `AI suggested ${notes.join("; ")} — review before saving.`
+          : "AI had no suggestion for this question.",
+      );
+    } catch (err: unknown) {
+      setAiError(err instanceof ApiError ? err.message : "AI request failed");
+    } finally {
+      setAiBusy(null);
+    }
+  }
+
+  // "Improve with AI" — re-derive the question from the original crop +
+  // OCR text via the vision endpoint. Repopulates editable fields; the
+  // answer is never inferred (OCR/AI can't know it).
+  async function onImproveWithAI() {
+    const img = ocrPrefill?.imageB64;
+    if (!img || aiBusy) return;
+    setAiError(null);
+    setAiNote(null);
+    setAiBusy("parse");
+    try {
+      const r = await parseQuestion(img, ocrPrefill?.ocrText ?? "");
+      setStem(r.stem);
+      setType(r.type);
+      setOptions(
+        r.options.length > 0
+          ? r.options
+          : [
+              { label: "A", content: "" },
+              { label: "B", content: "" },
+            ],
+      );
+      setCorrect([]);
+      setImprovedByAi(true);
+      setAiNote(
+        "Reparsed from the screenshot — verify options & LaTeX, then " +
+          "pick the correct answer.",
+      );
+    } catch (err: unknown) {
+      setAiError(err instanceof ApiError ? err.message : "AI request failed");
+    } finally {
+      setAiBusy(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -233,10 +323,16 @@ export default function QuestionFormPage() {
         {source === "ocr" && (
           <div className="mt-3 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-xs text-sky-800">
             Draft from OCR — review every field before saving.
-            {ocrPrefill && !ocrPrefill.matched && (
+            {ocrPrefill && !ocrPrefill.matched && !improvedByAi && (
               <span className="mt-1 block text-amber-700">
-                Couldn&apos;t auto-split the options — separate the stem and
-                options manually below.
+                Couldn&apos;t auto-split the options — separate them
+                manually, or click <strong>Improve with AI</strong> below.
+              </span>
+            )}
+            {improvedByAi && (
+              <span className="mt-1 block text-emerald-700">
+                Reparsed with AI — verify the options &amp; LaTeX, then
+                pick the answer.
               </span>
             )}
           </div>
@@ -351,6 +447,46 @@ export default function QuestionFormPage() {
                 {t.name}
               </label>
             ))
+          )}
+        </div>
+
+        {/* Stage-6 AI helpers — on-demand only, never automatic. */}
+        <div className="mt-5 rounded-md border border-violet-200 bg-violet-50 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onAiSuggest}
+              disabled={aiBusy !== null || !stem.trim()}
+              className="rounded-md border border-violet-400 bg-white px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+            >
+              {aiBusy === "suggest"
+                ? "Asking AI…"
+                : "AI: suggest tags + summary"}
+            </button>
+            {ocrPrefill?.imageB64 && (
+              <button
+                type="button"
+                onClick={onImproveWithAI}
+                disabled={aiBusy !== null}
+                className={
+                  "rounded-md border px-3 py-1.5 text-xs font-medium disabled:opacity-50 " +
+                  (!ocrPrefill.matched || looksLikeFormula(stem)
+                    ? "border-amber-500 bg-amber-100 text-amber-900 hover:bg-amber-200"
+                    : "border-violet-400 bg-white text-violet-800 hover:bg-violet-100")
+                }
+              >
+                {aiBusy === "parse" ? "Improving…" : "Improve with AI"}
+              </button>
+            )}
+            <span className="text-[11px] text-gray-500">
+              Runs only when clicked — uses your daily AI quota.
+            </span>
+          </div>
+          {aiNote && (
+            <p className="mt-2 text-xs text-violet-700">{aiNote}</p>
+          )}
+          {aiError && (
+            <p className="mt-2 text-xs text-red-700">AI: {aiError}</p>
           )}
         </div>
 

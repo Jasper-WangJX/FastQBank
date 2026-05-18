@@ -235,7 +235,14 @@ async function captureAndRecognize(): Promise<void> {
     mainWindow?.webContents.send(IPC.ocrBusy, true);
     const result = await ocrImage(png);
     showWindow();
-    mainWindow?.webContents.send(IPC.ocrResult, result);
+    // Carry the cropped screenshot (base64 PNG) alongside the OCR text
+    // so the renderer can offer "Improve with AI" (stage-6 vision
+    // /ai/parse-question) without re-capturing. The server downsamples +
+    // grayscales it, so sending the full crop here is fine.
+    mainWindow?.webContents.send(IPC.ocrResult, {
+      ...result,
+      image_b64: png.toString("base64"),
+    });
   } catch (err) {
     showWindow();
     mainWindow?.webContents.send(IPC.ocrError, {
