@@ -12,8 +12,12 @@ WORKDIR /web
 # Pin pnpm to the version that generated pnpm-lock.yaml so
 # --frozen-lockfile is deterministic.
 RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
-# Install deps first for layer caching.
-COPY apps/web/package.json apps/web/pnpm-lock.yaml ./
+# Install deps first for layer caching. pnpm-workspace.yaml carries the
+# `allowBuilds` approval (pnpm 10+ blocks dependency build scripts like
+# esbuild's by default and exits non-zero in CI without it) — it MUST be
+# copied here or `pnpm install --frozen-lockfile` fails with
+# ERR_PNPM_IGNORED_BUILDS.
+COPY apps/web/package.json apps/web/pnpm-lock.yaml apps/web/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY apps/web/ ./
 # config.ts reads import.meta.env.VITE_API_BASE_URL at build time.
