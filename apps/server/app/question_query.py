@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import false, or_, select
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Question, QuestionTag, Tag
@@ -19,7 +20,9 @@ from app.schemas import QuestionOut
 
 
 def to_question_out(q: Question, tags: list[Tag]) -> QuestionOut:
-    """Build the response model. `tags` is supplied explicitly."""
+    """Build the response model. `tags` is supplied explicitly (no ORM
+    relationship); pydantic validates the ORM Tag objects via TagOut's
+    from_attributes, and the JSONB option dicts via OptionOut."""
     return QuestionOut(
         id=q.id,
         user_id=q.user_id,
@@ -95,7 +98,7 @@ async def tags_by_question(
 
 async def subtree_question_predicate(
     db: AsyncSession, user_id: UUID, tag_id: UUID
-):
+) -> ColumnElement[bool]:
     """A SQLAlchemy boolean expression selecting questions tagged with
     `tag_id` OR any descendant tag (id-based materialized paths make the
     subtree a pure prefix query). If the tag isn't an owned, live tag,
