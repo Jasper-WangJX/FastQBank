@@ -286,3 +286,48 @@ class AiUsageOut(BaseModel):
     total_tokens: int
     request_count: int
     limit: int
+
+
+# ---------------------------------------------------------------------------
+# Stage 7 — Flashcards review + wrong-question set schemas
+# ---------------------------------------------------------------------------
+
+
+class DeckIn(BaseModel):
+    """Body for POST /review/deck. The client sends the explicit set of
+    selected question ids it built in the picker. `limit` (the optional
+    "random pick" cap) draws a random sample of that many; omitted/None
+    means all selected (server caps at 1000 as a sanity bound)."""
+
+    question_ids: list[UUID] = Field(min_length=1)
+    limit: int | None = Field(default=None, ge=1, le=1000)
+
+
+class DeckOut(BaseModel):
+    """The questions to run, as full QuestionOut (the client needs
+    `correct` to score locally — these are the user's own questions, and
+    GET /questions already exposes `correct`)."""
+
+    items: list[QuestionOut]
+
+
+class ReviewLogIn(BaseModel):
+    """Body for POST /review/logs — one per answered card."""
+
+    question_id: UUID
+    correct: bool
+
+
+class WrongListOut(BaseModel):
+    """Active wrong questions + the count for the picker's tag-column
+    "⚠ Wrong questions (N)" entry."""
+
+    items: list[QuestionOut]
+    total: int
+
+
+class TagQuestionIdsOut(BaseModel):
+    """Every live question id in a tag's subtree — backs the picker's
+    per-tag "Select all" without paging."""
+
+    question_ids: list[UUID]

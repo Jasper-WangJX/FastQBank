@@ -27,7 +27,7 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 | 4 Electron shell | ✅ Done (2026-05-17) | Desktop app boots, reuses web build, tray icon |
 | 5 OCR entry pipeline | ✅ Done (2026-05-17) | Region capture → OCR → split → confirmation page → save |
 | 6 AI integration | ✅ Done (2026-05-17) | Tag suggestion + knowledge summary + rate limiting; on-demand vision AI for markerless split + LaTeX |
-| 7 Flashcards + wrong-set | ⬜ Todo | Card-based drill, reveal/hide, shuffle, auto-collected wrong set |
+| 7 Flashcards + wrong-set | ✅ Done (2026-05-18) | Question picker → card drill → persistent wrong set; incl. 7.1 tag/card-view UX |
 | 8 AI generation | ⬜ Todo | Seed selection → preview page → import + three drill modes |
 | 9 JSON import / export | ⬜ Todo | Full export, dedup-by-UUID import |
 | 10 Polish + Windows installer | ⬜ Todo | electron-builder packaging, productization |
@@ -230,6 +230,17 @@ Enter a new question; AI auto-suggests tags and writes a knowledge summary; the 
 ---
 
 ## Phase 7 — Flashcards + Wrong-Answer Set
+
+> **Status: ✅ Done (2026-05-18).** Delivered via brainstorming → spec → plan → subagent-driven execution (task-by-task with two-stage spec/quality review), plus a 7.1 UX addendum and follow-up refinements. Exit criteria accepted by `scripts/verify_review.py` (httpx ASGITransport, real Postgres, ALL PASS) + frontend `build`/`lint`/`vitest`(34) + the user's GUI walkthrough. Spec/plans under `docs/superpowers/specs|plans/`.
+
+#### Actual implementation notes (deviations from the original plan)
+- **Wrong-set semantics upgraded.** The roadmap said "`GET /questions?wrong=true` aggregating the latest N ReviewLog rows"; this was changed (confirmed with the user) to a **persistent, manually-cleared** set: new `wrong_questions` table (migration `0003`) + `WrongQuestion` model. A wrong answer upserts active (PG `ON CONFLICT`); a correct answer is a no-op; "Mark as mastered" sets `cleared_at` (leaves the set); answering wrong again reactivates the same row; soft-deleted questions are excluded by the `deleted_at IS NULL` read joins.
+- **Dedicated `/review` router** (not `?wrong=true` on `/questions`): `POST /review/deck`, `GET /review/tag-question-ids` (`tag_id` optional → all live owned ids), `POST /review/logs`, `GET /review/wrong`, `POST /review/wrong/{id}/master`. Shared `app/question_query.py` extracted (de-dups the subtree/tag-loading logic in `questions.py`). No committed pytest suite — same httpx verification-script pattern as stages 1–6.
+- **"auto-reveal" toggle → renamed Fast mode.** OFF: pick then Check (Submit for multi) to reveal. ON: single/judge reveal the moment you pick (the Check button is hidden), multi still needs Submit, and after reveal it lingers **0.8s then auto-advances**. Both modes score and write a ReviewLog.
+- **Entry page is a question picker** (not the roadmap's tag+count form): one **global selection Set across tags** (multi-tag safe), a tag column with "All questions" and "⚠ Wrong questions" entries, optional Random-pick cap, Shuffle-options, session-only. One ReviewLog per card (idx-idempotent, non-blocking failure + Retry); end summary with "Review wrong now". Pure logic in `lib/review/session.ts` built test-first (vitest).
+- **Wrong-set clearable from two places**: a per-row `Mastered` in the wrong-set listing + `Mark as mastered` on the wrong-set card (shown only when **this attempt was correct** — a still-wrong redo doesn't offer it).
+- **7.1 UX addendum**: full tag CRUD (`TagManagePanel`, a "⋯" actions menu, move-parent removed) moved into the **Question Bank page**; the standalone `/tags` page + nav + `TagManagerPage` removed; the question form gets a hierarchical attach checklist + "add a sub-tag under a parent (with confirm)"; hierarchical tag controls unified app-wide (shared `components/tags/tagTree.ts`); a List/Cards preview view for the Question Bank and the review picker (shared `QuestionCard`); the review picker defaults to "All questions" and uses an icon-only per-question select; review page size is 10.
+- **Branch** `phase-7-flashcards`, committed task-by-task, merged into `main` after acceptance.
 
 ### Tasks
 - Review entry page: tag filter, count, toggles (shuffle options / auto-reveal)

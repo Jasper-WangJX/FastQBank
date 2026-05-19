@@ -10,9 +10,10 @@ import { RequireAuth } from "./auth/RequireAuth";
 import AppLayout from "./components/AppLayout";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
-import TagManagerPage from "./pages/TagManagerPage";
 import QuestionListPage from "./pages/QuestionListPage";
 import QuestionFormPage from "./pages/QuestionFormPage";
+import ReviewEntryPage from "./pages/ReviewEntryPage";
+import ReviewSessionPage from "./pages/ReviewSessionPage";
 
 /** Inverse of RequireAuth: keep an already-logged-in user out of the
  *  login/register pages by bouncing them to the home page. */
@@ -54,13 +55,14 @@ function App() {
           >
             {/* "/" has no page of its own — land on the question bank. */}
             <Route index element={<Navigate to="/questions" replace />} />
-            <Route path="/tags" element={<TagManagerPage />} />
             <Route path="/questions" element={<QuestionListPage />} />
             <Route path="/questions/new" element={<QuestionFormPage />} />
             <Route
               path="/questions/:id/edit"
               element={<QuestionFormPage />}
             />
+            <Route path="/review" element={<ReviewEntryPage />} />
+            <Route path="/review/session" element={<ReviewSessionPage />} />
           </Route>
 
           {/* Unknown paths -> "/" -> (index) -> /questions. */}

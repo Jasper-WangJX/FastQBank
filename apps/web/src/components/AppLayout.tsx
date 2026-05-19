@@ -84,8 +84,8 @@ export default function AppLayout() {
             <NavLink to="/questions/new" className={navClass}>
               New Question
             </NavLink>
-            <NavLink to="/tags" className={navClass}>
-              Tags
+            <NavLink to="/review" className={navClass}>
+              Review
             </NavLink>
           </nav>
           <button

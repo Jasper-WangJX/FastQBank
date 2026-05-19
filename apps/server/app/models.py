@@ -204,3 +204,40 @@ class AiUsage(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "day", name="uq_ai_usage_user_day"),
     )
+
+
+class WrongQuestion(Base):
+    """Persistent, manually-cleared wrong-question set (stage 7).
+
+    One row per (user_id, question_id). A wrong answer upserts with
+    cleared_at=NULL (PG ON CONFLICT, mirrors AiUsage). A correct answer
+    does NOT touch this table. "Mark as mastered" sets cleared_at.
+    Answering wrong again reactivates the same row. Soft-deleted
+    questions are excluded by the read queries (join deleted_at IS NULL),
+    not by a cleanup job here.
+    """
+
+    __tablename__ = "wrong_questions"
+
+    id: Mapped[PyUUID] = _uuid_pk()
+    user_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    )
+    question_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("questions.id"), nullable=False
+    )
+    added_at: Mapped[datetime] = _now_column()
+    cleared_at: Mapped[datetime | None] = _now_column(nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "question_id",
+            name="uq_wrong_questions_user_question",
+        ),
+        Index(
+            "ix_wrong_questions_user_active",
+            "user_id",
+            postgresql_where=text("cleared_at IS NULL"),
+        ),
+    )

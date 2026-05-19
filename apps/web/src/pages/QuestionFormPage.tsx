@@ -7,6 +7,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../lib/api";
 import {
   createQuestion,
+  createTag,
   getQuestion,
   listTags,
   updateQuestion,
@@ -21,6 +22,7 @@ import {
   suggestTags,
 } from "../lib/ai";
 import { looksLikeFormula } from "../lib/ocr/splitter";
+import { depthOf, flattenInTreeOrder } from "../components/tags/tagTree";
 import Latex from "../components/Latex";
 
 const JUDGE_OPTIONS: Option[] = [
@@ -36,10 +38,6 @@ function nextLabel(opts: Option[]): string {
     if (!used.has(L)) return L;
   }
   return `X${opts.length + 1}`;
-}
-
-function tagDepth(t: Tag): number {
-  return t.path.split("/").length - 1;
 }
 
 export default function QuestionFormPage() {
@@ -74,6 +72,12 @@ export default function QuestionFormPage() {
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [improvedByAi, setImprovedByAi] = useState(false);
+
+  // "Add a sub-tag here" — this page can CREATE tags (with a confirm,
+  // since it can't rename/delete them; that lives in the Question Bank).
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagParent, setNewTagParent] = useState<string>(""); // "" = root
+  const [tagBusy, setTagBusy] = useState(false);
 
   // Load tags, and (edit mode) the question to prefill.
   useEffect(() => {
@@ -186,10 +190,46 @@ export default function QuestionFormPage() {
     return null;
   }, [stem, options, correct, type]);
 
-  const sortedTags = useMemo(
-    () => tags.slice().sort((a, b) => a.path.localeCompare(b.path)),
-    [tags],
-  );
+  // Hierarchical (depth-first) order so the checklist + parent picker
+  // show a clear tag hierarchy, consistent with the rest of the app.
+  const orderedTags = useMemo(() => flattenInTreeOrder(tags), [tags]);
+
+  async function onAddTag() {
+    const name = newTagName.trim();
+    if (!name || tagBusy) return;
+    const parentName =
+      newTagParent === ""
+        ? null
+        : (tags.find((t) => t.id === newTagParent)?.name ?? null);
+    if (
+      !window.confirm(
+        `Create tag "${name}"` +
+          (parentName ? ` under "${parentName}"` : " as a root tag") +
+          "? Tags can only be renamed or deleted from the " +
+          "Question Bank page.",
+      )
+    ) {
+      return;
+    }
+    setTagBusy(true);
+    setError(null);
+    try {
+      const created = await createTag({
+        name,
+        parent_id: newTagParent || null,
+      });
+      const fresh = await listTags();
+      setTags(fresh);
+      setSelectedTagIds((ids) =>
+        ids.includes(created.id) ? ids : [...ids, created.id],
+      );
+      setNewTagName("");
+    } catch (e: unknown) {
+      setError(e instanceof ApiError ? e.message : "Network error");
+    } finally {
+      setTagBusy(false);
+    }
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -428,16 +468,16 @@ export default function QuestionFormPage() {
           Tags
         </label>
         <div className="mt-1 max-h-40 overflow-auto rounded-md border border-gray-200 p-2">
-          {sortedTags.length === 0 ? (
+          {orderedTags.length === 0 ? (
             <p className="text-xs text-gray-400">
-              No tags yet — create some on the Tags page.
+              No tags yet — add one below.
             </p>
           ) : (
-            sortedTags.map((t) => (
+            orderedTags.map((t) => (
               <label
                 key={t.id}
                 className="flex items-center gap-2 py-0.5 text-sm"
-                style={{ paddingLeft: tagDepth(t) * 16 }}
+                style={{ paddingLeft: depthOf(t) * 16 }}
               >
                 <input
                   type="checkbox"
@@ -448,6 +488,39 @@ export default function QuestionFormPage() {
               </label>
             ))
           )}
+        </div>
+
+        {/* Create a sub-tag here (rename/move/delete live in the
+            Question Bank page; this only adds, behind a confirm). */}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <select
+            aria-label="Parent tag for the new tag"
+            value={newTagParent}
+            onChange={(e) => setNewTagParent(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1 text-xs"
+          >
+            <option value="">(root)</option>
+            {orderedTags.map((t) => (
+              <option key={t.id} value={t.id}>
+                {" ".repeat(depthOf(t) * 2)}
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <input
+            value={newTagName}
+            onChange={(e) => setNewTagName(e.target.value)}
+            placeholder="New tag name"
+            className="w-40 rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:border-slate-500"
+          />
+          <button
+            type="button"
+            disabled={tagBusy || !newTagName.trim()}
+            onClick={onAddTag}
+            className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+          >
+            {tagBusy ? "Adding…" : "Add tag"}
+          </button>
         </div>
 
         {/* Stage-6 AI helpers — on-demand only, never automatic. */}
