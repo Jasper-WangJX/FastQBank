@@ -218,7 +218,7 @@ async def suggest_tags(
             await db.scalars(
                 select(Tag)
                 .where(Tag.user_id == user.id, Tag.deleted_at.is_(None))
-                .order_by(Tag.path)
+                .order_by(Tag.name)
             )
         ).all()
     )
@@ -249,7 +249,7 @@ async def suggest_tags(
         t = by_name.get(n.strip().lower())
         if t and t.id not in seen:
             seen.add(t.id)
-            out.append(SuggestedTag(id=t.id, name=t.name, path=t.path))
+            out.append(SuggestedTag(id=t.id, name=t.name))
         if len(out) == 3:
             break
     return SuggestTagsOut(tags=out)
@@ -312,7 +312,7 @@ async def generate(
             await db.scalars(
                 select(Tag)
                 .where(Tag.user_id == user.id, Tag.deleted_at.is_(None))
-                .order_by(Tag.path)
+                .order_by(Tag.name)
             )
         ).all()
     )
