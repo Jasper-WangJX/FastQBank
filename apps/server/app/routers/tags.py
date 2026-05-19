@@ -14,6 +14,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -76,7 +77,14 @@ async def create_tag(
         )
     tag = Tag(user_id=user.id, name=body.name)
     db.add(tag)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="a tag with this name already exists",
+        ) from None
     await db.refresh(tag)
     return tag
 
@@ -99,7 +107,14 @@ async def rename_tag(
         )
     tag.name = body.name
     tag.updated_at = func.now()
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="a tag with this name already exists",
+        ) from None
     await db.refresh(tag)
     return tag
 
