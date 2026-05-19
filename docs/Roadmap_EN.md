@@ -28,7 +28,7 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 | 5 OCR entry pipeline | ✅ Done (2026-05-17) | Region capture → OCR → split → confirmation page → save |
 | 6 AI integration | ✅ Done (2026-05-17) | Tag suggestion + knowledge summary + rate limiting; on-demand vision AI for markerless split + LaTeX |
 | 7 Flashcards + wrong-set | ✅ Done (2026-05-18) | Question picker → card drill → persistent wrong set; incl. 7.1 tag/card-view UX |
-| 8 AI generation | ⬜ Todo | Seed selection → preview page → import + three drill modes |
+| 8 AI generation | ✅ Done (2026-05-19) | Pick seeds in Review entry → mixed/AI-only flashcards → on-card "Add to question bank" (with tags+analysis) |
 | 9 JSON import / export | ⬜ Todo | Full export, dedup-by-UUID import |
 | 10 Polish + Windows installer | ⬜ Todo | electron-builder packaging, productization |
 
@@ -254,6 +254,17 @@ Drill 20 cards in one session; the ones answered incorrectly show up in the wron
 ---
 
 ## Phase 8 — AI Generation + Three Drill Modes
+
+> **Status: ✅ Done (2026-05-19).** Delivered via brainstorming → spec → plan →
+> subagent-driven execution (task-by-task with two-stage spec/quality review).
+> Reuses the Review-entry selection set as AI generation seeds; extends
+> `/ai/generate` to also emit existing-tags-only tag suggestions and a
+> knowledge_summary (analysis); AI cards are ephemeral (synthetic id) — drill
+> does not write ReviewLog or add to the wrong set (even on wrong answer); the
+> on-card "Add to question bank" button reuses `POST /questions`
+> (`source=ai`). Two sub-options: mixed / AI-only. No new tables, endpoints,
+> or migrations. Spec at
+> `docs/superpowers/specs/2026-05-19-phase8-ai-generation-design.md`.
 
 ### Tasks
 - Add multi-select to the library list; a footer button "generate using selected as seeds"
