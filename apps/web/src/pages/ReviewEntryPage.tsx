@@ -1,7 +1,7 @@
 // The review picker (spec §6.1). Selection is ONE global Set<questionId>
 // that survives switching tags — a question stays green wherever it
 // appears (incl. multi-tagged). The tag column reuses listTags() (flat,
-// rebuilt by parent_id like TagManagerPage); the main list reuses
+// rebuilt by parent_id like the tag panel); the main list reuses
 // listQuestions({tagId}) (subtree + paginated). "Select all" uses the
 // dedicated id endpoint so it covers the whole subtree, not just the
 // loaded page. Selection is session-only (not persisted).

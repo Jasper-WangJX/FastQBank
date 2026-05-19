@@ -1,7 +1,7 @@
 // Paginated question bank with keyword (debounced) + tag-subtree filters.
 // LaTeX in stems is rendered inline. Row actions: edit / delete.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../lib/api";
 import {
@@ -12,13 +12,10 @@ import {
   type Tag,
 } from "../lib/qbank";
 import Latex from "../components/Latex";
+import TagManagePanel from "../components/tags/TagManagePanel";
 import { getDesktop } from "../lib/desktop";
 
 const PAGE_SIZE = 10;
-
-function tagDepth(t: Tag): number {
-  return t.path.split("/").length - 1;
-}
 
 export default function QuestionListPage() {
   const navigate = useNavigate();
@@ -104,10 +101,19 @@ export default function QuestionListPage() {
     }
   }
 
-  const sortedTags = useMemo(
-    () => tags.slice().sort((a, b) => a.path.localeCompare(b.path)),
-    [tags],
-  );
+  // Re-fetch tags AND force the question list to reload. Called by the
+  // tag panel's onChanged after a create/rename/move/delete (a deleted
+  // tag changes which questions match). A plain async fn (not a
+  // useEffect) so it's lint-safe under react-hooks/set-state-in-effect.
+  async function reloadTagsAndList() {
+    try {
+      const t = await listTags();
+      setTags(t);
+    } catch {
+      /* a tag reload failure shouldn't wipe the list */
+    }
+    setTick((x) => x + 1);
+  }
 
   const total = data?.total ?? 0;
   const items = data?.items ?? [];
@@ -149,22 +155,6 @@ export default function QuestionListPage() {
           }}
           className="w-64 rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
         />
-        <select
-          value={tagId}
-          onChange={(e) => {
-            setTagId(e.target.value);
-            setOffset(0);
-          }}
-          className="rounded-md border border-gray-300 px-2 py-2 text-sm"
-        >
-          <option value="">All tags</option>
-          {sortedTags.map((t) => (
-            <option key={t.id} value={t.id}>
-              {" ".repeat(tagDepth(t) * 2)}
-              {t.name}
-            </option>
-          ))}
-        </select>
         {hasFilters && (
           <button
             onClick={() => {
@@ -177,6 +167,20 @@ export default function QuestionListPage() {
             Clear filters
           </button>
         )}
+      </div>
+
+      {/* Tag filter + management (Phase 7.1: tag CRUD lives here; the
+          standalone /tags page was removed). */}
+      <div className="mt-3">
+        <TagManagePanel
+          tags={tags}
+          activeTagId={tagId || null}
+          onSelect={(id) => {
+            setTagId(id ?? "");
+            setOffset(0);
+          }}
+          onChanged={reloadTagsAndList}
+        />
       </div>
 
       {error && (

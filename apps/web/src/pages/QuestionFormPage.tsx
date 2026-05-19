@@ -430,7 +430,7 @@ export default function QuestionFormPage() {
         <div className="mt-1 max-h-40 overflow-auto rounded-md border border-gray-200 p-2">
           {sortedTags.length === 0 ? (
             <p className="text-xs text-gray-400">
-              No tags yet — create some on the Tags page.
+              No tags yet — add one below.
             </p>
           ) : (
             sortedTags.map((t) => (
