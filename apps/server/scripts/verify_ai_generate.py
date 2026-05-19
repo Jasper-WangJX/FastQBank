@@ -54,6 +54,10 @@ FAKE_JSON = json.dumps(
 )
 
 
+# Duck-typed on purpose: the real provider (app.llm.LLMProvider) is a
+# concrete class whose __init__ needs api_key/base_url/model, so we don't
+# subclass it — we only implement the one method the router calls
+# (complete_text), with a signature matching provider.py.
 class FakeProvider:
     async def complete_text(
         self, messages, max_tokens, *, temperature=0.3, json_mode=False
@@ -96,74 +100,81 @@ async def main() -> None:
         ).json()
 
         # --- happy path with the fake provider ---
+        _orig = ai_router.get_text_provider
         ai_router.get_text_provider = lambda: FakeProvider()
-        g = await c.post(
-            "/ai/generate",
-            json={"seed_question_ids": [seed["id"]], "count": 2},
-            headers=h,
-        )
-        assert g.status_code == 200, g.text
-        qs = g.json()["questions"]
-        assert len(qs) == 2, qs
+        try:
+            g = await c.post(
+                "/ai/generate",
+                json={"seed_question_ids": [seed["id"]], "count": 2},
+                headers=h,
+            )
+            assert g.status_code == 200, g.text
+            qs = g.json()["questions"]
+            assert len(qs) == 2, qs
 
-        q0 = qs[0]
-        assert q0["valid"] is True, q0
-        assert q0["knowledge_summary"] == (
-            "Tests basic addition of integers."
-        ), q0
-        # case-insensitive match -> canonical name; unknown + dup dropped
-        assert q0["tags"] == ["Algebra"], q0["tags"]
+            q0 = qs[0]
+            assert q0["valid"] is True, q0
+            assert q0["knowledge_summary"] == (
+                "Tests basic addition of integers."
+            ), q0
+            # case-insensitive match -> canonical name; unknown + dup dropped
+            assert q0["tags"] == ["Algebra"], q0["tags"]
 
-        q1 = qs[1]
-        assert q1["valid"] is False, q1
-        assert q1["validation_error"], q1
-        assert q1["knowledge_summary"] == "", q1
-        assert q1["tags"] == [], q1
+            q1 = qs[1]
+            assert q1["valid"] is False, q1
+            assert q1["validation_error"], q1
+            assert q1["knowledge_summary"] == "", q1
+            assert q1["tags"] == [], q1
 
-        # --- "Add to question bank" reuses POST /questions ---
-        add = await c.post(
-            "/questions",
-            json={
-                "stem": q0["stem"],
-                "type": q0["type"],
-                "options": q0["options"],
-                "correct": q0["correct"],
-                "knowledge_summary": q0["knowledge_summary"],
-                "tag_ids": [tag["id"]],
-                "source": "ai",
-            },
-            headers=h,
-        )
-        assert add.status_code == 201, add.text
-        added = add.json()
-        assert added["source"] == "ai", added
-        assert [t["id"] for t in added["tags"]] == [tag["id"]], added
-        assert added["knowledge_summary"] == q0["knowledge_summary"]
+            # --- "Add to question bank" reuses POST /questions ---
+            add = await c.post(
+                "/questions",
+                json={
+                    "stem": q0["stem"],
+                    "type": q0["type"],
+                    "options": q0["options"],
+                    "correct": q0["correct"],
+                    "knowledge_summary": q0["knowledge_summary"],
+                    "tag_ids": [tag["id"]],
+                    "source": "ai",
+                },
+                headers=h,
+            )
+            assert add.status_code == 201, add.text
+            added = add.json()
+            assert added["source"] == "ai", added
+            assert [t["id"] for t in added["tags"]] == [tag["id"]], added
+            assert added["knowledge_summary"] == q0["knowledge_summary"]
 
-        # --- schema guards must not regress ---
-        empty = await c.post(
-            "/ai/generate", json={"seed_question_ids": []}, headers=h
-        )
-        assert empty.status_code == 422, empty.text
+            # --- schema guards must not regress ---
+            empty = await c.post(
+                "/ai/generate", json={"seed_question_ids": []}, headers=h
+            )
+            assert empty.status_code == 422, empty.text
 
-        illegal = await c.post(
-            "/ai/generate",
-            json={"seed_question_ids": [str(uuid.uuid4())]},
-            headers=h,
-        )
-        assert illegal.status_code == 400, illegal.text
+            illegal = await c.post(
+                "/ai/generate",
+                json={"seed_question_ids": [str(uuid.uuid4())]},
+                headers=h,
+            )
+            assert illegal.status_code == 400, illegal.text
+        finally:
+            ai_router.get_text_provider = _orig
 
         # --- no AI key -> 503 (never 500) ---
         def boom():
             raise AINotConfigured("text AI is not configured")
 
         ai_router.get_text_provider = boom
-        down = await c.post(
-            "/ai/generate",
-            json={"seed_question_ids": [seed["id"]], "count": 2},
-            headers=h,
-        )
-        assert down.status_code == 503, down.text
+        try:
+            down = await c.post(
+                "/ai/generate",
+                json={"seed_question_ids": [seed["id"]], "count": 2},
+                headers=h,
+            )
+            assert down.status_code == 503, down.text
+        finally:
+            ai_router.get_text_provider = _orig
 
     print("verify_ai_generate: ALL PASS")
 
