@@ -8,7 +8,7 @@ Session state is client-side; this router is stateless.
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -124,4 +124,61 @@ async def review_log(
         )
         await db.execute(stmt)
 
+    await db.commit()
+
+
+@router.get("/review/wrong", response_model=WrongListOut)
+async def review_wrong(
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WrongListOut:
+    """Active wrong questions (cleared_at IS NULL) for this user, newest
+    first, excluding soft-deleted questions. `total` backs the picker's
+    "⚠ Wrong questions (N)" entry."""
+    questions = list(
+        (
+            await db.scalars(
+                select(Question)
+                .join(
+                    WrongQuestion,
+                    WrongQuestion.question_id == Question.id,
+                )
+                .where(
+                    WrongQuestion.user_id == user.id,
+                    WrongQuestion.cleared_at.is_(None),
+                    Question.deleted_at.is_(None),
+                )
+                .order_by(WrongQuestion.added_at.desc())
+            )
+        ).all()
+    )
+    items = await _questions_out(db, questions)
+    return WrongListOut(items=items, total=len(items))
+
+
+@router.post(
+    "/review/wrong/{question_id}/master",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def review_master(
+    question_id: UUID,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Mark a question as mastered: set cleared_at on the active row so
+    it leaves the wrong set (the row stays — a later wrong answer
+    reactivates it). 404 if it isn't currently in the active set."""
+    row = await db.scalar(
+        select(WrongQuestion).where(
+            WrongQuestion.user_id == user.id,
+            WrongQuestion.question_id == question_id,
+            WrongQuestion.cleared_at.is_(None),
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="not in the active wrong set",
+        )
+    row.cleared_at = func.now()
     await db.commit()
