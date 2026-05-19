@@ -362,6 +362,12 @@ export default function ReviewEntryPage() {
                 setActiveId(""); // sentinel for "tag-filter-driven"
                 setItems(null);
               }
+              // Removing the last chip while in tag-filter-driven mode falls back
+              // to All so the user is never stuck with no source.
+              if (ids.length === 0 && activeId === "") {
+                setActiveId(ALL);
+                setItems(null);
+              }
             }}
             match={tagMatch}
             onChangeMatch={(m) => {
