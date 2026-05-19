@@ -8,8 +8,6 @@ function tag(id: string, name: string): Tag {
     id,
     user_id: "u",
     name,
-    parent_id: null,
-    path: id,
     created_at: "",
     updated_at: "",
   };
