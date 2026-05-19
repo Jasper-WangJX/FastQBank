@@ -1,53 +1,34 @@
-"""Tag CRUD (Roadmap stage 2).
+"""Tag CRUD (flat, post-phase-8 refactor).
 
-Materialized path is ID-BASED: a root tag's path is its own UUID, a child's
-path is `<parent.path>/<self.id>`. Consequences:
-- rename touches only `name` — path is stable, descendants untouched;
-- only *move* rewrites the subtree's paths;
-- LIKE prefix queries are safe (UUIDs never contain % or _).
+Tags are FLAT — no parent_id/path. Per-user uniqueness is enforced by the
+partial unique index `uq_tags_user_name` (deleted_at IS NULL); the router
+also pre-checks so callers get a clean 409 instead of an IntegrityError.
 
 Every query is scoped to the current user AND `deleted_at IS NULL`.
-Deletes are SOFT (stage 3): the delete endpoint sets `deleted_at` instead
-of removing rows; every read path already filters it, so reads are
-unchanged and a delete is reversible. Conflict policy is LWW by
-server clock — `updated_at` is stamped `now()` on every mutation, so the
-last write to reach the server wins (acceptable for personal use).
+Deletes are SOFT: the endpoint sets `deleted_at` instead of removing the
+row; reads already filter it. question_tags links are kept (harmless —
+the tag is hidden from reads).
 """
 
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.deps import CurrentUser
 from app.models import Tag
-from app.schemas import TagIn, TagMove, TagOut, TagRename
+from app.schemas import TagIn, TagOut, TagRename
 
-# Root tag = depth 1. depth == path.count("/") + 1, so MAX_DEPTH levels
-# means at most MAX_DEPTH - 1 slashes in any path.
-MAX_DEPTH = 6
-
-# No prefix: paths are written out explicitly, mirroring auth.py.
 router = APIRouter(tags=["tags"])
-
-
-def _level(path: str) -> int:
-    """0-based depth of a path (root == 0). depth = _level + 1."""
-    return path.count("/")
-
-
-def _compute_path(parent: Tag | None, self_id: UUID) -> str:
-    """ID-based materialized path for a tag with the given parent."""
-    return str(self_id) if parent is None else f"{parent.path}/{self_id}"
 
 
 async def _get_owned_tag(
     db: AsyncSession, user: CurrentUser, tag_id: UUID
 ) -> Tag:
-    """Fetch a live tag owned by the user, or raise 404. Using 404 (not
-    403) for the not-owned case avoids leaking which ids exist."""
+    """Fetch a live tag owned by the user, or raise 404. 404 (not 403)
+    on not-owned avoids leaking which ids exist."""
     tag = await db.scalar(
         select(Tag).where(
             Tag.id == tag_id,
@@ -62,24 +43,19 @@ async def _get_owned_tag(
     return tag
 
 
-async def _sibling_name_taken(
+async def _name_taken(
     db: AsyncSession,
     user: CurrentUser,
-    parent_id: UUID | None,
     name: str,
     *,
     exclude_id: UUID | None = None,
 ) -> bool:
-    """Soft uniqueness check for (user, parent, name). Not a DB constraint
-    (that needs a migration) — can be hardened later without touching the
-    read path. parent_id NULL needs IS NULL, not `= NULL`."""
+    """Soft pre-check mirroring the partial unique index. Returns True if
+    another live tag of this user already owns `name`."""
     stmt = select(Tag.id).where(
         Tag.user_id == user.id,
         Tag.deleted_at.is_(None),
         Tag.name == name,
-        Tag.parent_id.is_(None)
-        if parent_id is None
-        else Tag.parent_id == parent_id,
     )
     if exclude_id is not None:
         stmt = stmt.where(Tag.id != exclude_id)
@@ -92,42 +68,14 @@ async def _sibling_name_taken(
 async def create_tag(
     body: TagIn, user: CurrentUser, db: AsyncSession = Depends(get_db)
 ) -> Tag:
-    """Create a tag. parent_id null => a root tag."""
-    parent: Tag | None = None
-    if body.parent_id is not None:
-        parent = await db.scalar(
-            select(Tag).where(
-                Tag.id == body.parent_id,
-                Tag.user_id == user.id,
-                Tag.deleted_at.is_(None),
-            )
-        )
-        if parent is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="parent tag not found",
-            )
-        # new tag depth = parent depth + 1 = _level(parent)+2
-        if _level(parent.path) + 2 > MAX_DEPTH:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"tag hierarchy too deep (max {MAX_DEPTH} levels)",
-            )
-
-    if await _sibling_name_taken(db, user, body.parent_id, body.name):
+    """Create a flat tag for this user. 409 on duplicate name."""
+    if await _name_taken(db, user, body.name):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="a sibling tag with this name already exists",
+            detail="a tag with this name already exists",
         )
-
-    # path needs the DB-generated id; insert with a placeholder, flush to
-    # get the id (Postgres RETURNING), then set the real path before commit.
-    tag = Tag(
-        user_id=user.id, name=body.name, parent_id=body.parent_id, path=""
-    )
+    tag = Tag(user_id=user.id, name=body.name)
     db.add(tag)
-    await db.flush()
-    tag.path = _compute_path(parent, tag.id)
     await db.commit()
     await db.refresh(tag)
     return tag
@@ -140,102 +88,17 @@ async def rename_tag(
     user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ) -> Tag:
-    """Rename only. ID-based paths => `path` and descendants are untouched."""
+    """Rename a tag. 409 on duplicate name."""
     tag = await _get_owned_tag(db, user, tag_id)
-    if body.name != tag.name and await _sibling_name_taken(
-        db, user, tag.parent_id, body.name, exclude_id=tag.id
+    if body.name != tag.name and await _name_taken(
+        db, user, body.name, exclude_id=tag.id
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="a sibling tag with this name already exists",
+            detail="a tag with this name already exists",
         )
     tag.name = body.name
     tag.updated_at = func.now()
-    await db.commit()
-    await db.refresh(tag)
-    return tag
-
-
-@router.put("/tags/{tag_id}/move", response_model=TagOut)
-async def move_tag(
-    tag_id: UUID,
-    body: TagMove,
-    user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
-) -> Tag:
-    """Re-parent a tag (parent_id null => make it a root) and rewrite the
-    paths of the whole moved subtree in one transaction."""
-    tag = await _get_owned_tag(db, user, tag_id)
-
-    new_parent: Tag | None = None
-    if body.parent_id is not None:
-        new_parent = await db.scalar(
-            select(Tag).where(
-                Tag.id == body.parent_id,
-                Tag.user_id == user.id,
-                Tag.deleted_at.is_(None),
-            )
-        )
-        if new_parent is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="parent tag not found",
-            )
-        # Cycle prevention is pure string work thanks to ID-based paths:
-        # a descendant's path starts with `<tag.path>/`.
-        if (
-            new_parent.id == tag.id
-            or new_parent.path == tag.path
-            or new_parent.path.startswith(tag.path + "/")
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="cannot move a tag under itself or its descendant",
-            )
-
-    # The moved subtree = the tag itself + every descendant.
-    subtree = list(
-        (
-            await db.scalars(
-                select(Tag).where(
-                    Tag.user_id == user.id,
-                    Tag.deleted_at.is_(None),
-                    or_(
-                        Tag.path == tag.path,
-                        Tag.path.like(tag.path + "/%"),
-                    ),
-                )
-            )
-        ).all()
-    )
-
-    # Deepest node after the move must still fit MAX_DEPTH.
-    new_tag_level = 0 if new_parent is None else _level(new_parent.path) + 1
-    rel_height = max(_level(d.path) for d in subtree) - _level(tag.path)
-    if new_tag_level + rel_height + 1 > MAX_DEPTH:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"move would exceed max depth ({MAX_DEPTH})",
-        )
-
-    if await _sibling_name_taken(
-        db, user, body.parent_id, tag.name, exclude_id=tag.id
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="a sibling tag with this name already exists",
-        )
-
-    old_prefix = tag.path
-    new_tag_path = _compute_path(new_parent, tag.id)
-    for d in subtree:
-        # d.path is either == old_prefix (the tag) or old_prefix + "/...".
-        d.path = new_tag_path + d.path[len(old_prefix) :]
-        d.updated_at = func.now()
-    # `tag` is the same identity-mapped object as its entry in `subtree`,
-    # so its path was already rewritten above; just re-parent it.
-    tag.parent_id = new_parent.id if new_parent is not None else None
-
     await db.commit()
     await db.refresh(tag)
     return tag
@@ -245,25 +108,11 @@ async def move_tag(
 async def delete_tag(
     tag_id: UUID, user: CurrentUser, db: AsyncSession = Depends(get_db)
 ) -> None:
-    """Soft-delete the tag and its whole subtree (set `deleted_at`).
-    question_tags links are intentionally kept: every read path filters
-    `Tag.deleted_at IS NULL`, so questions simply stop showing these tags
-    and the delete is reversible. The `deleted_at IS NULL` predicate means
-    an already-deleted descendant keeps its original timestamp (e.g.
-    deleting a child first, then its parent)."""
+    """Soft-delete the tag (sets deleted_at). question_tags links are
+    intentionally kept — every read path filters `Tag.deleted_at IS NULL`
+    so questions simply stop showing this tag."""
     tag = await _get_owned_tag(db, user, tag_id)
-
-    # One UPDATE soft-deletes the node + every descendant (id-based path
-    # prefix; UUIDs never contain LIKE wildcards).
-    await db.execute(
-        update(Tag)
-        .where(
-            Tag.user_id == user.id,
-            Tag.deleted_at.is_(None),
-            or_(Tag.path == tag.path, Tag.path.like(tag.path + "/%")),
-        )
-        .values(deleted_at=func.now())
-    )
+    tag.deleted_at = func.now()
     await db.commit()
 
 
@@ -271,11 +120,10 @@ async def delete_tag(
 async def list_tags(
     user: CurrentUser, db: AsyncSession = Depends(get_db)
 ) -> list[Tag]:
-    """All live tags for the user as a flat list ordered by `path`; the
-    client rebuilds the tree."""
+    """All live tags for the user as a flat list ordered by name."""
     rows = await db.scalars(
         select(Tag)
         .where(Tag.user_id == user.id, Tag.deleted_at.is_(None))
-        .order_by(Tag.path)
+        .order_by(Tag.name)
     )
     return list(rows.all())
