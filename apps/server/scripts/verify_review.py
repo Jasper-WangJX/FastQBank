@@ -24,7 +24,7 @@ async def main() -> None:
             "/auth/register",
             json={"email": email, "password": "password123"},
         )
-        assert r.status_code == 200, r.text
+        assert r.status_code == 201, r.text
         token = r.json()["access_token"]
         h = {"Authorization": f"Bearer {token}"}
 
