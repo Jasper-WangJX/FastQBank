@@ -25,6 +25,7 @@ from app.question_query import (
 from app.schemas import (
     DeckIn,
     DeckOut,
+    QuestionOut,
     ReviewLogIn,
     TagQuestionIdsOut,
     WrongListOut,
@@ -35,7 +36,7 @@ router = APIRouter(tags=["review"])
 
 async def _questions_out(
     db: AsyncSession, questions: list[Question]
-) -> list:
+) -> list[QuestionOut]:
     """QuestionOut list with one batched tag query (no N+1)."""
     tags_by_q = await tags_by_question(db, [q.id for q in questions])
     return [to_question_out(q, tags_by_q.get(q.id, [])) for q in questions]
@@ -59,7 +60,7 @@ async def review_deck(
     if body.limit is not None:
         stmt = stmt.order_by(func.random()).limit(body.limit)
     else:
-        stmt = stmt.limit(1000)
+        stmt = stmt.order_by(Question.created_at.desc()).limit(1000)
     questions = list((await db.scalars(stmt)).all())
     return DeckOut(items=await _questions_out(db, questions))
 
