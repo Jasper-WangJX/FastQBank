@@ -12,8 +12,6 @@ export interface Tag {
   id: string;
   user_id: string;
   name: string;
-  parent_id: string | null;
-  path: string;
   created_at: string;
   updated_at: string;
 }
@@ -48,7 +46,6 @@ export interface QuestionListOut {
 
 export interface TagCreate {
   name: string;
-  parent_id?: string | null;
 }
 
 export interface QuestionPayload {
@@ -78,13 +75,6 @@ export function renameTag(id: string, name: string): Promise<Tag> {
   return apiFetch<Tag>(`/tags/${id}`, { method: "PATCH", body: { name } });
 }
 
-/** parentId === null => make it a root tag (backend PUT /tags/{id}/move). */
-export function moveTag(id: string, parentId: string | null): Promise<Tag> {
-  return apiFetch<Tag>(`/tags/${id}/move`, {
-    method: "PUT",
-    body: { parent_id: parentId },
-  });
-}
 
 export async function deleteTag(id: string): Promise<void> {
   await apiFetch(`/tags/${id}`, { method: "DELETE" });
@@ -95,7 +85,10 @@ export async function deleteTag(id: string): Promise<void> {
 export interface ListQuestionsParams {
   limit?: number;
   offset?: number;
-  tagId?: string | null;
+  /** Zero or more flat tag ids. Combined under tagMatch semantics. */
+  tagIds?: string[];
+  /** "all" (AND, default) | "any" (OR). Ignored when tagIds is empty. */
+  tagMatch?: "all" | "any";
   q?: string | null;
 }
 
@@ -105,7 +98,12 @@ export function listQuestions(
   const qs = new URLSearchParams();
   if (params.limit != null) qs.set("limit", String(params.limit));
   if (params.offset != null) qs.set("offset", String(params.offset));
-  if (params.tagId) qs.set("tag_id", params.tagId);
+  // URLSearchParams supports appending the same key multiple times,
+  // matching FastAPI's `tag_id: list[UUID] = Query(...)` shape.
+  for (const id of params.tagIds ?? []) qs.append("tag_id", id);
+  if (params.tagIds && params.tagIds.length > 0 && params.tagMatch) {
+    qs.set("tag_match", params.tagMatch);
+  }
   if (params.q) qs.set("q", params.q);
   const suffix = qs.toString();
   return apiFetch<QuestionListOut>(

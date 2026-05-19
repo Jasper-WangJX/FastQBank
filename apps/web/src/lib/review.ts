@@ -26,11 +26,17 @@ export function getDeck(
   return apiFetch<DeckOut>("/review/deck", { method: "POST", body });
 }
 
-/** Live question ids: a tag's subtree, or (no arg) ALL the user's. */
-export function getTagQuestionIds(tagId?: string): Promise<string[]> {
-  const qs = tagId ? `?tag_id=${encodeURIComponent(tagId)}` : "";
+/** Live question ids: AND/OR over one or more tag ids, or (no ids) ALL. */
+export function getTagQuestionIds(
+  tagIds: string[] = [],
+  tagMatch: "all" | "any" = "all",
+): Promise<string[]> {
+  const qs = new URLSearchParams();
+  for (const id of tagIds) qs.append("tag_id", id);
+  if (tagIds.length > 0) qs.set("tag_match", tagMatch);
+  const suffix = qs.toString();
   return apiFetch<{ question_ids: string[] }>(
-    `/review/tag-question-ids${qs}`,
+    `/review/tag-question-ids${suffix ? `?${suffix}` : ""}`,
   ).then((r) => r.question_ids);
 }
 
