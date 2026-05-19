@@ -191,6 +191,7 @@ export default function ReviewSessionPage() {
     setIdx((i) => i + 1);
     setPicked([]);
     setRevealed(false);
+    setMasterError(null);
   }
 
   const correctSet = new Set(q.correct);
