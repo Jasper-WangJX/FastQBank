@@ -54,6 +54,10 @@ describe("tagsByLowerName", () => {
 describe("buildAiCards", () => {
   const tags = tagsByLowerName([tag("t1", "Algebra")]);
 
+  it("returns [] for an empty drafts array", () => {
+    expect(buildAiCards([], tags, ids())).toEqual([]);
+  });
+
   it("drops invalid drafts", () => {
     const out = buildAiCards(
       [draft({ valid: false }), draft()],

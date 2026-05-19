@@ -52,8 +52,8 @@ export function buildAiCards(
       if (hit && !seen.has(hit.id)) {
         seen.add(hit.id);
         resolved.push(hit);
+        if (resolved.length === 3) break;
       }
-      if (resolved.length === 3) break;
     }
     out.push({
       id: makeId(),
