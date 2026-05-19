@@ -50,41 +50,27 @@ class UserOut(BaseModel):
 
 
 class TagIn(BaseModel):
-    """Request body for POST /tags. An omitted/null parent_id => root tag."""
+    """Request body for POST /tags. Flat tags — no parent reference."""
 
     name: str = Field(min_length=1, max_length=100)
-    parent_id: UUID | None = None
 
 
 class TagRename(BaseModel):
-    """Request body for PATCH /tags/{id}. Rename only — with id-based
-    materialized paths the `path` never changes on a rename, so descendants
-    are untouched."""
+    """Request body for PATCH /tags/{id}. Rename only."""
 
     name: str = Field(min_length=1, max_length=100)
 
 
-class TagMove(BaseModel):
-    """Request body for PUT /tags/{id}/move. An explicit null parent_id
-    means "make this a root tag". A dedicated endpoint (instead of an
-    optional field on a shared body) keeps null unambiguous."""
-
-    parent_id: UUID | None
-
-
 class TagOut(BaseModel):
-    """Public view of a Tag. deleted_at is intentionally NOT declared so
-    the soft-delete column can never be serialized to a client. The tree
-    is returned as a flat list ordered by `path`; the client rebuilds the
-    hierarchy."""
+    """Public view of a Tag. `deleted_at` is intentionally NOT declared so
+    the soft-delete column can never be serialized to a client. Tags are
+    flat; clients render the list in name order."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     user_id: UUID
     name: str
-    parent_id: UUID | None
-    path: str
     created_at: datetime
     updated_at: datetime
 
@@ -224,7 +210,6 @@ class SuggestedTag(BaseModel):
 
     id: UUID
     name: str
-    path: str
 
 
 class SuggestTagsOut(BaseModel):

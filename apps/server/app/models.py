@@ -75,20 +75,22 @@ class Tag(Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    # Self-referential parent; NULL means a root tag.
-    parent_id: Mapped[PyUUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tags.id"), nullable=True
-    )
-    # Materialized path, e.g. "数学/微积分/极限" — enables prefix queries.
-    path: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = _now_column()
     updated_at: Mapped[datetime] = _now_column()
     deleted_at: Mapped[datetime | None] = _now_column(nullable=True)
 
+    # Flat tags. (user_id, name) is unique among LIVE rows only —
+    # soft-deleted rows are excluded so a name can be reused after
+    # a delete. Reads already filter `deleted_at IS NULL` everywhere.
     __table_args__ = (
         Index("ix_tags_user_id", "user_id"),
-        Index("ix_tags_parent_id", "parent_id"),
-        Index("ix_tags_path", "path"),
+        Index(
+            "uq_tags_user_name",
+            "user_id",
+            "name",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
 
