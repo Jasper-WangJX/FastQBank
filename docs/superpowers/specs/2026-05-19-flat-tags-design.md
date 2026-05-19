@@ -49,22 +49,27 @@ This spec removes hierarchy entirely and adds a unified "search + multi-select
 
 ### 3.1 QuestionListPage filter row
 
-Replaces the current tree-style TagManagePanel with a single horizontal row:
+Replaces the current tree-style TagManagePanel with a small filter block:
 
 ```
-[search tag…………………………]   AND ⏐ OR   [Manage tags]
+ AND ⏐ OR   [Manage tags]
 Selected: [微积分 ×] [极限 ×] [Clear]
+[search tag…………………………]
+ ☑ 微积分
+ ☑ 极限
+ ☐ 数列
+ …  (scrollable, max ~240 px)
 ```
 
-- Search filters the candidate-tag list in real time (case-insensitive). The
-  candidate list is a popover that appears below the search input on focus or
-  while it has text; click outside (or Esc) closes it.
-- Inside the popover, candidates render as checkbox rows (consistent with
-  §3.3); ticking a checkbox toggles the tag in the **Selected** chip row.
-  Clicking the chip's × removes it. The chip row is hidden when nothing is
-  selected.
+- The candidate-tag list is **always visible** below the AND/OR row; the
+  search input inside it filters in real time (case-insensitive). No popover
+  trigger (this was tried during implementation and removed as confusing —
+  users wanted candidates immediately visible).
+- Candidates render as checkbox rows; ticking a checkbox toggles the tag in
+  the **Selected** chip row. Clicking the chip's × removes it. The chip row
+  is hidden when nothing is selected.
 - **AND** (default) = question must carry *every* selected tag; **OR** = at
-  least one. The toggle does not clear chips.
+  least one. The toggle is grayed-out and inert when no tags are selected.
 - Zero selected tags = no tag filter (today's "All tags" behaviour).
 - `Manage tags` opens the drawer (see §3.4).
 
@@ -83,13 +88,15 @@ Selected: [微积分 ×] [极限 ×] [Clear]
 candidate list (scrollable)
 ```
 
-- Because the rail is fixed-width and vertical, the candidate list is
-  **always visible** below the AND/OR row (no popover). Same checkbox-row
-  rendering as §3.1.
-- When **Wrong** or **All** is the active source, the tag filter region is
-  visually disabled with the hint *"Cancel All / Wrong to filter by tag."*
-- Otherwise the right-side question list updates as the user adds/removes chips
-  or flips AND/OR.
+- The candidate list is **always visible** below the AND/OR row (same as
+  §3.1; same checkbox-row rendering).
+- The tag filter is NEVER disabled by Wrong/All. Picking a tag while Wrong
+  or All is active automatically switches the active source to "tag-filter
+  driven" (the All/Wrong selection clears). Removing the last chip in
+  tag-filter mode falls back to All so the user is never stuck in an
+  empty-source state.
+- The right-side question list updates as the user adds/removes chips or
+  flips AND/OR.
 - `Select all` on the right side keeps its existing semantic — operates on the
   *whole filtered source*, not just the visible page.
 
@@ -152,10 +159,10 @@ Manage tags                                                  ✕
 ### 3.5 Edge-cases
 
 - **Zero selected tags** in §3.1 / §3.2: no tag filter; AND/OR toggle is
-  visually present but has no effect.
+  grayed out (`disabled`) so it can't be clicked.
 - **One selected tag**: AND and OR produce identical results.
-- **Clear** button: empties the chip row *and* the search input; does not
-  reset the AND/OR toggle.
+- **Clear** button: empties the chip row; does not reset the search input
+  text inside the candidate list, and does not reset the AND/OR toggle.
 - **AI suggested tag missing**: the AI endpoint only returns the user's own
   live tags by id, so this can't happen; no client-side filtering needed.
 
@@ -227,11 +234,11 @@ pre-launch; only the developer's data is affected).
 
 ### 6.1 New components (all under `apps/web/src/components/tags/`)
 
-- `TagFilter.tsx` — the shared "search + chips + AND/OR" filter used by
-  QuestionListPage and ReviewEntryPage. Props:
-  - `tags: Tag[]`, `selectedIds: string[]`, `onChangeSelected(ids)`,
-    `match: 'all' | 'any'`, `onChangeMatch(m)`, `onOpenManage()`,
-    `showMatchToggle?: boolean` (false for the form), `disabled?: boolean`.
+- `TagFilter.tsx` — the shared "chips + AND/OR + always-inline candidate
+  list + Manage button" filter used by QuestionListPage and ReviewEntryPage.
+  Props: `tags`, `selectedIds`, `onChangeSelected`, `match`, `onChangeMatch`,
+  `onOpenManage`. No `variant`/`disabled` switches — same component, same
+  shape on both pages; AND/OR self-grays when no chips are selected.
 - `TagPicker.tsx` — the "search + chips + create" picker used by
   QuestionFormPage. Same internals as TagFilter but no AND/OR and an inline
   create row. Wraps `TagFilter` internally when convenient, or shares a
