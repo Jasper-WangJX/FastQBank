@@ -23,6 +23,7 @@ import {
 } from "../lib/review";
 import { allSelected, toggleId } from "../lib/review/session";
 import Latex from "../components/Latex";
+import { QuestionCard, QuestionCardGrid } from "../components/QuestionCard";
 
 const PAGE_SIZE = 10;
 const WRONG = "__wrong__"; // sentinel "tag" id for the wrong-set entry
@@ -59,6 +60,8 @@ export default function ReviewEntryPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Presentation only — default "list" preserves the original UX.
+  const [view, setView] = useState<"list" | "cards">("list");
 
   // Tag list + wrong count, once.
   useEffect(() => {
@@ -304,13 +307,39 @@ export default function ReviewEntryPage() {
                       ? `All questions (${total})`
                       : `Questions (${total})`}
                 </span>
-                <button
-                  disabled={sourceIds.length === 0}
-                  onClick={onToggleAll}
-                  className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
-                >
-                  {everySelected ? "Deselect all" : "Select all"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <div className="flex overflow-hidden rounded-md border border-gray-300 text-xs">
+                    <button
+                      onClick={() => setView("list")}
+                      className={
+                        "px-2 py-1 " +
+                        (view === "list"
+                          ? "bg-slate-800 text-white"
+                          : "text-gray-600 hover:bg-gray-50")
+                      }
+                    >
+                      List
+                    </button>
+                    <button
+                      onClick={() => setView("cards")}
+                      className={
+                        "px-2 py-1 " +
+                        (view === "cards"
+                          ? "bg-slate-800 text-white"
+                          : "text-gray-600 hover:bg-gray-50")
+                      }
+                    >
+                      Cards
+                    </button>
+                  </div>
+                  <button
+                    disabled={sourceIds.length === 0}
+                    onClick={onToggleAll}
+                    className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {everySelected ? "Deselect all" : "Select all"}
+                  </button>
+                </div>
               </div>
 
               {items === null ? (
@@ -319,6 +348,44 @@ export default function ReviewEntryPage() {
                 <p className="mt-3 text-sm text-gray-500">
                   No questions here.
                 </p>
+              ) : view === "cards" ? (
+                <div className="mt-3">
+                  <QuestionCardGrid>
+                    {items.map((q) => {
+                      const on = selected.has(q.id);
+                      return (
+                        <QuestionCard
+                          key={q.id}
+                          question={q}
+                          actions={
+                            <>
+                              {activeId === WRONG && (
+                                <button
+                                  disabled={busy}
+                                  onClick={() => onMasterRow(q.id)}
+                                  className="rounded-md border border-amber-400 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                                >
+                                  Mastered
+                                </button>
+                              )}
+                              <button
+                                onClick={() => onToggleQuestion(q.id)}
+                                className={
+                                  "rounded-md px-3 py-1 text-xs font-medium " +
+                                  (on
+                                    ? "bg-green-600 text-white hover:bg-green-700"
+                                    : "border border-gray-300 text-gray-700 hover:bg-gray-50")
+                                }
+                              >
+                                {on ? "✓ Selected" : "Select"}
+                              </button>
+                            </>
+                          }
+                        />
+                      );
+                    })}
+                  </QuestionCardGrid>
+                </div>
               ) : (
                 <div className="mt-3 divide-y divide-gray-100">
                   {items.map((q) => {
