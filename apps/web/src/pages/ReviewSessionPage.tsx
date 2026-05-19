@@ -207,7 +207,7 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
     setResults((r) => [...r, { question: q, correct }]);
     // Fast mode: linger briefly on the result, then auto-advance.
     if (fastMode) {
-      advanceTimer.current = window.setTimeout(() => next(), 1100);
+      advanceTimer.current = window.setTimeout(() => next(), 800);
     }
     if (!loggedRef.current.has(idx)) {
       loggedRef.current.add(idx);
@@ -347,7 +347,9 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
           )
         ) : (
           <>
-            {isWrongSetSession && (
+            {/* Only offer "mastered" when this attempt was correct —
+                a still-wrong redo shouldn't be markable as mastered. */}
+            {isWrongSetSession && isAnswerCorrect(q, picked) && (
               <div className="flex items-center gap-2">
                 <button
                   disabled={mastered.has(q.id)}
