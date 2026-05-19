@@ -54,6 +54,11 @@ logs/
 *.bak
 coverage/
 
+# ---------- Superpowers (brainstorming visual-companion) ----------
+# Transient mockups + session state from the brainstorming skill.
+# The design specs under docs/superpowers/ are intentionally tracked.
+.superpowers/
+
 # ---------- OS files ----------
 Thumbs.db
 ehthumbs.db
@@ -62,6 +67,9 @@ $RECYCLE.BIN/
 .DS_Store
 
 # ---------- Editor / IDE ----------
+# Local Claude Code agent config / instructions.
+.claude/
+CLAUDE.md
 .idea/
 *.swp
 *.swo
