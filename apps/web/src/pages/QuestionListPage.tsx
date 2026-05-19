@@ -1,4 +1,4 @@
-// Paginated question bank with keyword (debounced) + tag-subtree filters.
+// Paginated question bank with keyword (debounced) + multi-tag (AND/OR) filters.
 // LaTeX in stems is rendered inline. Row actions: edit / delete.
 
 import { useEffect, useState } from "react";

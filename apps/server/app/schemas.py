@@ -317,7 +317,7 @@ class WrongListOut(BaseModel):
 
 
 class TagQuestionIdsOut(BaseModel):
-    """Every live question id in a tag's subtree — backs the picker's
-    per-tag "Select all" without paging."""
+    """Every live question id matching the supplied tag filter — backs
+    the picker's per-source "Select all" without paging."""
 
     question_ids: list[UUID]

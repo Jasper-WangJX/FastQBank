@@ -38,7 +38,7 @@ app.add_middleware(
 
 # Auth endpoints: /auth/register, /auth/login, /me
 app.include_router(auth.router)
-# Stage 2 — tag tree + question CRUD
+# Stage 2 — tag + question CRUD
 app.include_router(tags.router)
 app.include_router(questions.router)
 # Stage 6 — AI endpoints (text now; vision parse-question in step 5)

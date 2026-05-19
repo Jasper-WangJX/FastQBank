@@ -1,7 +1,7 @@
 """Shared question-read helpers used by /questions and /review.
 
 Extracted verbatim from routers/questions.py so there is exactly one
-implementation of (a) the tag-subtree predicate, (b) the owned-question
+implementation of (a) the multi-tag AND/OR predicate, (b) the owned-question
 fetch, (c) the QuestionOut builder, and (d) the batched tag loader that
 avoids an N+1 on list responses. No ORM relationship is used on purpose
 (async lazy-load = MissingGreenlet); tags are loaded explicitly.
@@ -156,16 +156,3 @@ async def multi_tag_predicate(
             for tid in valid_ids
         )
     )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat shim — routers still import this name; Tasks 4 and 5 will
-# replace the call-sites with multi_tag_predicate and remove this alias.
-# ---------------------------------------------------------------------------
-async def subtree_question_predicate(
-    db: AsyncSession, user_id: UUID, tag_id: UUID
-) -> ColumnElement[bool]:
-    """Deprecated shim: delegates to multi_tag_predicate with match="any"
-    so existing callers (questions.py, review.py) don't break at import
-    time while Tasks 4 and 5 are being applied."""
-    return await multi_tag_predicate(db, user_id, [tag_id], match="any")

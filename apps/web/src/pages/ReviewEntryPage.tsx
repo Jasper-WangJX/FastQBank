@@ -1,10 +1,9 @@
 // The review picker (spec §6.1). Selection is ONE global Set<questionId>
-// that survives switching tags — a question stays green wherever it
-// appears (incl. multi-tagged). The tag column reuses listTags() (flat,
-// rebuilt by parent_id like the tag panel); the main list reuses
-// listQuestions({tagId}) (subtree + paginated). "Select all" uses the
-// dedicated id endpoint so it covers the whole subtree, not just the
-// loaded page. Selection is session-only (not persisted).
+// that survives switching sources — a question stays green wherever it
+// appears (incl. multi-tagged). Sources: "All questions", "Wrong
+// questions", or a multi-tag filter (AND/OR). "Select all" uses the
+// dedicated id endpoint so it covers the whole active source, not
+// just the loaded page. Selection is session-only (not persisted).
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -55,7 +54,7 @@ export default function ReviewEntryPage() {
   // The one global selection set.
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // Full id list of the active source (subtree or wrong set) — drives
+  // Full id list of the active source (tag-filtered or wrong set) — drives
   // the global toggle label/action so it reflects the WHOLE source,
   // not just the loaded page.
   const [sourceIds, setSourceIds] = useState<string[]>([]);
@@ -66,6 +65,10 @@ export default function ReviewEntryPage() {
   const [fastMode, setFastMode] = useState(false);
   const [aiMode, setAiMode] = useState<"off" | "mixed" | "ai">("off");
   const [aiCount, setAiCount] = useState(5);
+
+  // Bumped inside TagManageDrawer.onChanged so the active-list effect
+  // re-runs and question rows reflect any tag renames immediately.
+  const [tick, setTick] = useState(0);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -128,7 +131,7 @@ export default function ReviewEntryPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeId, tagIds, tagMatch, offset, tagFilterActive]);
+  }, [activeId, tagIds, tagMatch, offset, tagFilterActive, tick]);
 
   // Whole-source id set for the global Select-all/Deselect-all (covers
   // the entire source, independent of pagination).
@@ -193,7 +196,7 @@ export default function ReviewEntryPage() {
     }
   }
 
-  // "Select all" / "Deselect all" for the WHOLE active source (subtree
+  // "Select all" / "Deselect all" for the WHOLE active source (tag-filtered
   // or wrong set), not just the visible page.
   function onToggleAll() {
     if (sourceIds.length === 0) return;
@@ -654,6 +657,7 @@ export default function ReviewEntryPage() {
           try {
             const t = await listTags();
             setTags(t);
+            setTick((x) => x + 1);
           } catch {
             /* ignore */
           }
