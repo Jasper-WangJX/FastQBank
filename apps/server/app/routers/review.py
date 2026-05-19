@@ -68,22 +68,19 @@ async def review_deck(
 @router.get("/review/tag-question-ids", response_model=TagQuestionIdsOut)
 async def review_tag_question_ids(
     user: CurrentUser,
-    tag_id: UUID = Query(...),
+    tag_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TagQuestionIdsOut:
-    """Every live owned question id in `tag_id`'s subtree — backs the
-    picker's per-tag "Select all" without paging. Unknown/foreign tag =>
-    empty list (matches the subtree-predicate's match-nothing behaviour)."""
-    pred = await subtree_question_predicate(db, user.id, tag_id)
-    ids = (
-        await db.scalars(
-            select(Question.id).where(
-                Question.user_id == user.id,
-                Question.deleted_at.is_(None),
-                pred,
-            )
-        )
-    ).all()
+    """Live owned question ids. With `tag_id`: that tag's subtree (for
+    the picker's per-tag "Select all"). Without `tag_id`: every live
+    owned question (the "All" source's "Select all")."""
+    conds = [
+        Question.user_id == user.id,
+        Question.deleted_at.is_(None),
+    ]
+    if tag_id is not None:
+        conds.append(await subtree_question_predicate(db, user.id, tag_id))
+    ids = (await db.scalars(select(Question.id).where(*conds))).all()
     return TagQuestionIdsOut(question_ids=list(ids))
 
 

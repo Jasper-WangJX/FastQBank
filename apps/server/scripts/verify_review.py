@@ -132,6 +132,14 @@ async def main() -> None:
             "total"
         ] == 1
 
+        # tag-question-ids with NO tag_id => every live owned question
+        # (q1 live; q2 was soft-deleted above, so excluded).
+        allids = await c.get("/review/tag-question-ids", headers=h)
+        assert allids.status_code == 200, allids.text
+        ids = allids.json()["question_ids"]
+        assert q1["id"] in ids, ids
+        assert q2["id"] not in ids, ids
+
     print("verify_review: ALL PASS")
 
 
