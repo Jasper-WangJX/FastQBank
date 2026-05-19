@@ -38,8 +38,9 @@ export default function ReviewEntryPage() {
 
   const [tags, setTags] = useState<Tag[]>([]);
   const [wrongTotal, setWrongTotal] = useState(0);
-  // Active list source: a real tag id, or WRONG, or "" (nothing picked).
-  const [activeId, setActiveId] = useState<string>("");
+  // Active list source: ALL (default) / a real tag id / WRONG; "" is
+  // unused now that ALL is the initial source.
+  const [activeId, setActiveId] = useState<string>(ALL);
   // null = loading; [] = loaded but empty; Question[] = loaded results.
   const [items, setItems] = useState<Question[] | null>(null);
   const [offset, setOffset] = useState(0);
@@ -370,14 +371,16 @@ export default function ReviewEntryPage() {
                               )}
                               <button
                                 onClick={() => onToggleQuestion(q.id)}
+                                aria-label={on ? "Selected" : "Select"}
+                                title={on ? "Selected" : "Select"}
                                 className={
-                                  "rounded-md px-3 py-1 text-xs font-medium " +
+                                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-medium " +
                                   (on
                                     ? "bg-green-600 text-white hover:bg-green-700"
-                                    : "border border-gray-300 text-gray-700 hover:bg-gray-50")
+                                    : "border border-gray-300 text-gray-400 hover:bg-gray-50")
                                 }
                               >
-                                {on ? "✓ Selected" : "Select"}
+                                {on ? "✓" : ""}
                               </button>
                             </>
                           }
@@ -413,14 +416,16 @@ export default function ReviewEntryPage() {
                         )}
                         <button
                           onClick={() => onToggleQuestion(q.id)}
+                          aria-label={on ? "Selected" : "Select"}
+                          title={on ? "Selected" : "Select"}
                           className={
-                            "shrink-0 rounded-md px-3 py-1 text-xs font-medium " +
+                            "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-medium " +
                             (on
                               ? "bg-green-600 text-white hover:bg-green-700"
-                              : "border border-gray-300 text-gray-700 hover:bg-gray-50")
+                              : "border border-gray-300 text-gray-400 hover:bg-gray-50")
                           }
                         >
-                          {on ? "✓ Selected" : "Select"}
+                          {on ? "✓" : ""}
                         </button>
                       </div>
                     );

@@ -1,6 +1,6 @@
 // Hierarchical tag panel: (a) click a tag to FILTER (single active, with
-// an "All" row to clear), (b) full management on each node — rename,
-// add child, move, delete subtree — plus create-root. Used by
+// an "All" row to clear), (b) per-node management behind a single "⋯"
+// menu — rename / add child / delete subtree — plus create-root. Used by
 // QuestionListPage (Phase 7.1: tag management lives with the question
 // bank; the standalone /tags page was removed). After any mutation it
 // re-fetches via the injected onChanged() so the parent reloads the
@@ -11,11 +11,10 @@ import { ApiError } from "../../lib/api";
 import {
   createTag,
   deleteTag,
-  moveTag,
   renameTag,
   type Tag,
 } from "../../lib/qbank";
-import { byParent, depthOf, inSubtree, sortByPath } from "./tagTree";
+import { byParent, depthOf } from "./tagTree";
 
 interface Props {
   tags: Tag[];
@@ -41,6 +40,8 @@ export default function TagManagePanel({
   const [childName, setChildName] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  // Which node's "⋯" actions menu is open (only one at a time).
+  const [menuFor, setMenuFor] = useState<string | null>(null);
 
   function resetTransient() {
     setAddChildFor(null);
@@ -48,6 +49,7 @@ export default function TagManagePanel({
     setRenamingId(null);
     setRenameValue("");
     setNewRootName("");
+    setMenuFor(null);
   }
 
   async function run(action: () => Promise<unknown>) {
@@ -65,10 +67,6 @@ export default function TagManagePanel({
   }
 
   const grouped = useMemo(() => byParent(tags), [tags]);
-
-  function moveOptions(node: Tag) {
-    return sortByPath(tags.filter((t) => !inSubtree(t, node)));
-  }
 
   function renderNode(tag: Tag) {
     const depth = depthOf(tag);
@@ -121,67 +119,68 @@ export default function TagManagePanel({
               >
                 {tag.name}
               </button>
-              <select
-                aria-label={`Move ${tag.name}`}
+              <button
                 disabled={busy}
-                value={tag.parent_id ?? ""}
-                onChange={(e) =>
-                  run(() =>
-                    moveTag(
-                      tag.id,
-                      e.target.value === "" ? null : e.target.value,
-                    ),
-                  )
+                aria-label={`Actions for ${tag.name}`}
+                title="Tag actions"
+                onClick={() =>
+                  setMenuFor((m) => (m === tag.id ? null : tag.id))
                 }
-                className="ml-1 rounded-md border border-gray-300 px-1 py-0.5 text-xs"
+                className={
+                  "rounded-md border px-1.5 py-0.5 text-xs leading-none hover:bg-gray-50 disabled:opacity-50 " +
+                  (menuFor === tag.id
+                    ? "border-slate-500 bg-gray-100"
+                    : "border-gray-300 text-gray-500")
+                }
               >
-                <option value="">(root)</option>
-                {moveOptions(tag).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {" ".repeat(depthOf(t) * 2)}
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                disabled={busy}
-                onClick={() => {
-                  setRenamingId(tag.id);
-                  setRenameValue(tag.name);
-                }}
-                className="rounded-md border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
-              >
-                Rename
+                ⋯
               </button>
-              <button
-                disabled={busy}
-                onClick={() => {
-                  setAddChildFor(tag.id);
-                  setChildName("");
-                }}
-                className="rounded-md border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
-              >
-                + Child
-              </button>
-              <button
-                disabled={busy}
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `Delete "${tag.name}" and its whole subtree? ` +
-                        `Questions are kept but lose these tags.`,
-                    )
-                  ) {
-                    run(async () => {
-                      await deleteTag(tag.id);
-                      if (active) onSelect(null);
-                    });
-                  }
-                }}
-                className="rounded-md border border-red-300 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50"
-              >
-                Delete
-              </button>
+              {menuFor === tag.id && (
+                <span className="flex items-center gap-1">
+                  <button
+                    disabled={busy}
+                    onClick={() => {
+                      setMenuFor(null);
+                      setRenamingId(tag.id);
+                      setRenameValue(tag.name);
+                    }}
+                    className="rounded-md border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
+                  >
+                    Rename
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => {
+                      setMenuFor(null);
+                      setAddChildFor(tag.id);
+                      setChildName("");
+                    }}
+                    className="rounded-md border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-50"
+                  >
+                    + Child
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => {
+                      setMenuFor(null);
+                      if (
+                        window.confirm(
+                          `Delete "${tag.name}" and its whole subtree? ` +
+                            `Questions are kept but lose these tags.`,
+                        )
+                      ) {
+                        run(async () => {
+                          await deleteTag(tag.id);
+                          if (active) onSelect(null);
+                        });
+                      }
+                    }}
+                    className="rounded-md border border-red-300 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50"
+                  >
+                    Delete
+                  </button>
+                </span>
+              )}
             </>
           )}
         </div>
