@@ -85,3 +85,43 @@ async def review_tag_question_ids(
         )
     ).all()
     return TagQuestionIdsOut(question_ids=list(ids))
+
+
+@router.post("/review/logs", status_code=status.HTTP_204_NO_CONTENT)
+async def review_log(
+    body: ReviewLogIn,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Record one answered card. Always inserts a ReviewLog (history is
+    kept). On a wrong answer, upsert wrong_questions active (PG
+    ON CONFLICT, mirrors the AiUsage pattern): first entry, or
+    reactivate a previously-mastered row. A correct answer does NOT
+    touch wrong_questions (per the confirmed "manual clear" semantics).
+    404 if the question isn't the user's / is soft-deleted."""
+    await get_owned_question(db, user.id, body.question_id)
+
+    db.add(
+        ReviewLog(
+            user_id=user.id,
+            question_id=body.question_id,
+            correct=body.correct,
+        )
+    )
+
+    if not body.correct:
+        stmt = (
+            pg_insert(WrongQuestion)
+            .values(
+                user_id=user.id,
+                question_id=body.question_id,
+                cleared_at=None,
+            )
+            .on_conflict_do_update(
+                constraint="uq_wrong_questions_user_question",
+                set_={"cleared_at": None, "added_at": func.now()},
+            )
+        )
+        await db.execute(stmt)
+
+    await db.commit()
