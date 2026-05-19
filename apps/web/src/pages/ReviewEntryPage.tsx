@@ -6,7 +6,7 @@
 // dedicated id endpoint so it covers the whole subtree, not just the
 // loaded page. Selection is session-only (not persisted).
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../lib/api";
 import {
@@ -30,22 +30,22 @@ import {
 } from "../lib/review/session";
 import Latex from "../components/Latex";
 import { QuestionCard, QuestionCardGrid } from "../components/QuestionCard";
+import TagFilter from "../components/tags/TagFilter";
+import TagManageDrawer from "../components/tags/TagManageDrawer";
 
 const PAGE_SIZE = 10;
 const WRONG = "__wrong__"; // sentinel "tag" id for the wrong-set entry
 const ALL = "__all__"; // sentinel: every question (no tag filter)
-
-function tagDepth(t: Tag): number {
-  return t.path.split("/").length - 1;
-}
 
 export default function ReviewEntryPage() {
   const navigate = useNavigate();
 
   const [tags, setTags] = useState<Tag[]>([]);
   const [wrongTotal, setWrongTotal] = useState(0);
-  // Active list source: ALL (default) / a real tag id / WRONG; "" is
-  // unused now that ALL is the initial source.
+  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [tagMatch, setTagMatch] = useState<"all" | "any">("all");
+  const [manageOpen, setManageOpen] = useState(false);
+  // Active list source: ALL (default) / WRONG / "" (tag-filter-driven).
   const [activeId, setActiveId] = useState<string>(ALL);
   // null = loading; [] = loaded but empty; Question[] = loaded results.
   const [items, setItems] = useState<Question[] | null>(null);
@@ -72,6 +72,9 @@ export default function ReviewEntryPage() {
   // Presentation only — default "list" preserves the original UX.
   const [view, setView] = useState<"list" | "cards">("list");
 
+  // Derived: true when the user has selected tags and is not on All/Wrong.
+  const tagFilterActive = activeId !== WRONG && activeId !== ALL && tagIds.length > 0;
+
   // Tag list + wrong count, once.
   useEffect(() => {
     let cancelled = false;
@@ -90,12 +93,12 @@ export default function ReviewEntryPage() {
     };
   }, []);
 
-  // Load the active list (a tag subtree, or the wrong set).
+  // Load the active list (tag-filter, all questions, or the wrong set).
   // All setState calls are inside async callbacks (no synchronous setState
   // in the effect body) to satisfy react-hooks/set-state-in-effect.
   // items === null while loading; the UI shows "Loading…" in that state.
   useEffect(() => {
-    if (!activeId) {
+    if (!activeId && !tagFilterActive) {
       return;
     }
     let cancelled = false;
@@ -103,7 +106,8 @@ export default function ReviewEntryPage() {
       activeId === WRONG
         ? getWrongSet().then((w) => ({ items: w.items, total: w.total }))
         : listQuestions({
-            tagId: activeId === ALL ? null : activeId,
+            tagIds: tagFilterActive ? tagIds : undefined,
+            tagMatch: tagFilterActive ? tagMatch : undefined,
             limit: PAGE_SIZE,
             offset,
           }).then((r) => ({ items: r.items, total: r.total }));
@@ -124,21 +128,22 @@ export default function ReviewEntryPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeId, offset]);
+  }, [activeId, tagIds, tagMatch, offset, tagFilterActive]);
 
   // Whole-source id set for the global Select-all/Deselect-all (covers
-  // the entire subtree / wrong set, independent of pagination).
+  // the entire source, independent of pagination).
   useEffect(() => {
-    if (!activeId) {
+    if (!activeId && !tagFilterActive) {
       return;
     }
     let cancelled = false;
     const load =
       activeId === WRONG
         ? getWrongSet().then((w) => w.items.map((q) => q.id))
-        : activeId === ALL
-          ? getTagQuestionIds()
-          : getTagQuestionIds(activeId);
+        : getTagQuestionIds(
+            tagFilterActive ? tagIds : [],
+            tagFilterActive ? tagMatch : "all",
+          );
     load
       .then((ids) => {
         if (!cancelled) setSourceIds(ids);
@@ -149,12 +154,7 @@ export default function ReviewEntryPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeId]);
-
-  const sortedTags = useMemo(
-    () => tags.slice().sort((a, b) => a.path.localeCompare(b.path)),
-    [tags],
-  );
+  }, [activeId, tagIds, tagMatch, tagFilterActive]);
 
   const everySelected = allSelected(sourceIds, selected);
 
@@ -305,7 +305,7 @@ export default function ReviewEntryPage() {
     }
   }
 
-  const showingPager = activeId !== "" && activeId !== WRONG;
+  const showingPager = (activeId !== "" || tagFilterActive) && activeId !== WRONG;
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -319,56 +319,67 @@ export default function ReviewEntryPage() {
 
       <div className="mt-4 flex gap-4">
         {/* Tag column */}
-        <div className="w-64 shrink-0 rounded-md border border-gray-200 p-2">
-          <button
-            onClick={() => pick(WRONG)}
-            className={
-              "block w-full rounded px-2 py-1 text-left text-sm " +
-              (activeId === WRONG
-                ? "bg-amber-100 font-medium text-amber-900"
-                : "text-amber-800 hover:bg-amber-50")
-            }
-          >
-            ⚠ Wrong questions ({wrongTotal})
-          </button>
-          <button
-            onClick={() => pick(ALL)}
-            className={
-              "mt-1 block w-full rounded px-2 py-1 text-left text-sm " +
-              (activeId === ALL
-                ? "bg-slate-800 text-white"
-                : "text-gray-700 hover:bg-gray-100")
-            }
-          >
-            All questions
-          </button>
-          <div className="my-2 border-t border-gray-100" />
-          {sortedTags.length === 0 ? (
-            <p className="px-2 text-xs text-gray-400">No tags yet.</p>
-          ) : (
-            sortedTags.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => pick(t.id)}
-                style={{ paddingLeft: 8 + tagDepth(t) * 14 }}
-                className={
-                  "block w-full rounded px-2 py-1 text-left text-sm " +
-                  (activeId === t.id
-                    ? "bg-slate-800 text-white"
-                    : "text-gray-700 hover:bg-gray-100")
-                }
-              >
-                {t.name}
-              </button>
-            ))
-          )}
+        <div className="w-64 shrink-0 space-y-2">
+          <div className="rounded-md border border-gray-200 p-2">
+            <button
+              onClick={() => {
+                pick(WRONG);
+                setTagIds([]);
+              }}
+              className={
+                "block w-full rounded px-2 py-1 text-left text-sm " +
+                (activeId === WRONG
+                  ? "bg-amber-100 font-medium text-amber-900"
+                  : "text-amber-800 hover:bg-amber-50")
+              }
+            >
+              ⚠ Wrong questions ({wrongTotal})
+            </button>
+            <button
+              onClick={() => {
+                pick(ALL);
+                setTagIds([]);
+              }}
+              className={
+                "mt-1 block w-full rounded px-2 py-1 text-left text-sm " +
+                (activeId === ALL && tagIds.length === 0
+                  ? "bg-slate-800 text-white"
+                  : "text-gray-700 hover:bg-gray-100")
+              }
+            >
+              All questions
+            </button>
+          </div>
+          <TagFilter
+            tags={tags}
+            selectedIds={tagIds}
+            onChangeSelected={(ids) => {
+              setTagIds(ids);
+              setOffset(0);
+              // Selecting a tag implies leaving the All/Wrong fixed entries:
+              // switch the active source to "by tag filter".
+              if (ids.length > 0 && (activeId === WRONG || activeId === ALL)) {
+                setActiveId(""); // sentinel for "tag-filter-driven"
+                setItems(null);
+              }
+            }}
+            match={tagMatch}
+            onChangeMatch={(m) => {
+              setTagMatch(m);
+              setOffset(0);
+            }}
+            onOpenManage={() => setManageOpen(true)}
+            variant="inline"
+            disabled={activeId === WRONG || activeId === ALL}
+            disabledHint="Cancel All / Wrong to filter by tag."
+          />
         </div>
 
         {/* Main area: questions for the active source */}
         <div className="min-w-0 flex-1 rounded-md border border-gray-200 p-3">
-          {activeId === "" ? (
+          {activeId === "" && !tagFilterActive ? (
             <p className="text-sm text-gray-500">
-              Pick a tag or the wrong set to choose questions.
+              Select tags above (or choose All / Wrong questions) to start.
             </p>
           ) : (
             <>
@@ -624,6 +635,24 @@ export default function ReviewEntryPage() {
         to question bank" during review. Your selection isn't saved
         between visits.
       </p>
+      <TagManageDrawer
+        open={manageOpen}
+        onClose={async () => {
+          setManageOpen(false);
+          const live = new Set(tags.map((t) => t.id));
+          const filtered = tagIds.filter((id) => live.has(id));
+          if (filtered.length !== tagIds.length) setTagIds(filtered);
+        }}
+        tags={tags}
+        onChanged={async () => {
+          try {
+            const t = await listTags();
+            setTags(t);
+          } catch {
+            /* ignore */
+          }
+        }}
+      />
     </div>
   );
 }
