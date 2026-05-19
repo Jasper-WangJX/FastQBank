@@ -27,7 +27,7 @@
 | 4 Electron 壳 | ✅ 已完成 (2026-05-17) | 桌面端能跑，复用 web 构建 + 托盘图标 |
 | 5 OCR 录题链路 | ✅ 已完成 (2026-05-17) | 框选截屏 → OCR → 拆分 → 确认页入库 |
 | 6 AI 接入 | ✅ 已完成 (2026-05-17) | 标签推荐 + 知识点摘要 + 限流；按需视觉 AI 做无标号拆分 + LaTeX |
-| 7 Flashcards 复习 + 错题集 | ⬜ 待办 | 卡片式过题、显隐答案、乱序、错题自动归集 |
+| 7 Flashcards 复习 + 错题集 | ✅ 已完成 (2026-05-18) | 题目选择器 → 卡片式过题 → 持久错题集；含 7.1 标签/卡片视图 UX |
 | 8 AI 出题 | ⬜ 待办 | 种子选择 → 预览页 → 入库 + 三种过题模式 |
 | 9 JSON 导入导出 | ⬜ 待办 | 导出全量、导入按 UUID 跳过重复 |
 | 10 打磨 + Windows 安装包 | ⬜ 待办 | electron-builder 打包、产品化收尾 |
@@ -204,6 +204,17 @@
 ---
 
 ## 阶段 7 — Flashcards 复习 + 错题集
+
+> **状态：✅ 已完成 (2026-05-18)。** 走 brainstorming → spec → 计划 → subagent 驱动执行（逐任务实现 + spec/质量两阶段评审），后续叠加 7.1 UX 改进与若干精修。退出标准已由 `scripts/verify_review.py`（httpx ASGITransport，真实 Postgres，ALL PASS）+ 前端 `build`/`lint`/`vitest`(34) + 用户 GUI 走查共同验收。规格/计划见 `docs/superpowers/specs|plans/`。
+
+#### 实际实现说明（与原计划的差异）
+- **错题集语义升级**：路线图原写「`GET /questions?wrong=true` 聚合最近 N 条 ReviewLog」，经确认改为**持久、手动清除**：新增 `wrong_questions` 表（迁移 `0003`）+ `WrongQuestion` 模型。答错 → PG `ON CONFLICT` upsert 为活跃；答对 → **不动**；「Mark as mastered」→ 写 `cleared_at` 离集；再答错 → 复活同一行；软删题靠读查询 `deleted_at IS NULL` 排除。
+- **专用 `/review` 路由**（非在 `/questions` 上加 `?wrong=true`）：`POST /review/deck`、`GET /review/tag-question-ids`（`tag_id` 可选，省略=全部存活题）、`POST /review/logs`、`GET /review/wrong`、`POST /review/wrong/{id}/master`。顺带抽出共享 `app/question_query.py`（去重 `questions.py` 的子树/标签加载逻辑）。后端无 committed pytest，沿用 1–6 阶段的 httpx 验证脚本范式。
+- **「自动显示答案」开关 → 重命名 Fast mode**：关=选完点 Check（多选 Submit）才揭示；开=单选/判断**选中即揭示且不显示 Check 按钮**、多选仍需 Submit，且揭示后停留 **0.8s 自动切下一题**。两种模式都计分、都写 ReviewLog。
+- **复习入口=题目选择器**（非路线图的「标签+数量」表单）：一个**跨标签全局选择集合**（多标签题安全）、标签栏 + 「All questions」+「⚠ Wrong questions」特殊条目、可选 Random pick 上限、Shuffle options、本轮有效不持久；每卡一条 ReviewLog（按 idx 幂等、失败非阻塞 + Retry）；结束小结含「Review wrong now」。前端纯逻辑 `lib/review/session.ts` 走 TDD（vitest）。
+- **错题集两处可清**：错题集列表行内 `Mastered` + 刷错题卡片上 `Mark as mastered`（仅当**本次答对**才显示——重做仍错不显示）。
+- **7.1 UX 叠加**：完整标签增删改（`TagManagePanel`，"⋯" 菜单，去除移动父节点）并入**题库页**，移除独立 `/tags` 页+导航+`TagManagerPage`；录题页改为层级标签勾选 + 「在某父标签下新增子标签（带确认）」；层级标签控件全站统一（共享 `components/tags/tagTree.ts`）；题库页与 review 选择器新增 List/Cards 预览视图（共享 `QuestionCard`）；review 默认选中「All questions」，单题选择按钮图标化；review 每页 10 题。
+- **分支**：`phase-7-flashcards`，逐任务提交，验收通过后合并入 `main`。
 
 ### 任务
 - 复习入口页：选标签过滤、选数量、开关（乱序选项 / 自动显示答案）
