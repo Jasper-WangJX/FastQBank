@@ -1,11 +1,17 @@
 // The flashcard runner (spec §6.2/§6.3). Deck + flags arrive via router
 // state from the picker; a direct hit / refresh has no state -> bounce
 // to /review (in-memory deck is intentionally not resumable in v1).
+//
+// Split: an outer wrapper reads router state and bounces; the inner
+// ReviewRunner holds all session state and is keyed by location.key, so
+// "Review wrong now" (navigating /review/session -> /review/session with
+// fresh state) fully remounts a brand-new session instead of reusing
+// the stale deck/state.
 
 import { useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { Question } from "../lib/qbank";
-import { masterWrong, postReviewLog } from "../lib/review";
+import { getWrongSet, masterWrong, postReviewLog } from "../lib/review";
 import {
   buildDeck,
   isAnswerCorrect,
@@ -28,25 +34,31 @@ interface Result {
 }
 
 export default function ReviewSessionPage() {
-  const navigate = useNavigate();
   const location = useLocation();
   const config =
     (location.state as { reviewConfig?: ReviewConfig } | null)
       ?.reviewConfig ?? null;
 
+  // No deck without router state (direct hit / refresh) -> bounce.
+  if (!config) return <Navigate to="/review" replace />;
+
+  // Key by location.key so navigating /review/session -> /review/session
+  // (e.g. "Review wrong now") fully remounts a fresh session.
+  return <ReviewRunner key={location.key} config={config} />;
+}
+
+function ReviewRunner({ config }: { config: ReviewConfig }) {
+  const navigate = useNavigate();
+
   // Build the deck ONCE (option order must stay stable for the session).
   // Reorder to selection order unless Random pick re-randomized it.
   const deck = useMemo<DeckCard[]>(() => {
-    if (!config) return [];
     let qs = config.questions;
     if (!config.randomOrder) {
       const pos = new Map(config.requestedOrder.map((id, i) => [id, i]));
       qs = qs
         .slice()
-        .sort(
-          (a, b) =>
-            (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0),
-        );
+        .sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
     }
     return buildDeck(qs, {
       randomOrder: config.randomOrder,
@@ -56,6 +68,8 @@ export default function ReviewSessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const { fastMode, isWrongSetSession } = config;
+
   const [idx, setIdx] = useState(0);
   const [picked, setPicked] = useState<string[]>([]);
   const [revealed, setRevealed] = useState(false);
@@ -63,10 +77,9 @@ export default function ReviewSessionPage() {
   const [mastered, setMastered] = useState<Set<string>>(new Set());
   const [logError, setLogError] = useState<string | null>(null);
   const [masterError, setMasterError] = useState<string | null>(null);
+  const [wrongNote, setWrongNote] = useState<string | null>(null);
   const loggedRef = useRef<Set<number>>(new Set());
 
-  if (!config) return <Navigate to="/review" replace />;
-  const { fastMode, isWrongSetSession } = config;
   if (deck.length === 0) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -84,6 +97,31 @@ export default function ReviewSessionPage() {
   }
 
   const finished = idx >= deck.length;
+
+  async function onReviewWrongNow() {
+    setWrongNote(null);
+    try {
+      const w = await getWrongSet();
+      if (w.items.length === 0) {
+        setWrongNote("No wrong questions — nothing to review. 🎉");
+        return;
+      }
+      navigate("/review/session", {
+        state: {
+          reviewConfig: {
+            questions: w.items,
+            requestedOrder: w.items.map((x) => x.id),
+            randomOrder: false,
+            shuffleOptions: config.shuffleOptions,
+            fastMode: config.fastMode,
+            isWrongSetSession: true,
+          },
+        },
+      });
+    } catch {
+      setWrongNote("Couldn't load the wrong set. Try again.");
+    }
+  }
 
   if (finished) {
     const wrong = results.filter((r) => !r.correct);
@@ -111,7 +149,16 @@ export default function ReviewSessionPage() {
             </ul>
           </div>
         )}
+        {wrongNote && (
+          <p className="mt-3 text-sm text-amber-700">{wrongNote}</p>
+        )}
         <div className="mt-4 flex gap-2">
+          <button
+            onClick={onReviewWrongNow}
+            className="rounded-md border border-amber-500 bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-200"
+          >
+            Review wrong now
+          </button>
           <button
             onClick={() => navigate("/review")}
             className="rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
@@ -131,12 +178,9 @@ export default function ReviewSessionPage() {
     if (revealed) return;
     if (isMulti) {
       setPicked((p) =>
-        p.includes(label)
-          ? p.filter((l) => l !== label)
-          : [...p, label],
+        p.includes(label) ? p.filter((l) => l !== label) : [...p, label],
       );
     } else {
-      // single / judge: pick is one label.
       setPicked([label]);
       if (fastMode) void doReveal([label]);
     }
@@ -147,14 +191,13 @@ export default function ReviewSessionPage() {
     setRevealed(true);
     const correct = isAnswerCorrect(q, sel);
     setResults((r) => [...r, { question: q, correct }]);
-    // Post exactly once per card index.
     if (!loggedRef.current.has(idx)) {
       loggedRef.current.add(idx);
       try {
         await postReviewLog(q.id, correct);
         setLogError(null);
       } catch {
-        loggedRef.current.delete(idx); // allow Retry
+        loggedRef.current.delete(idx);
         setLogError(
           "Couldn't save this result. Your progress continues.",
         );
@@ -191,6 +234,7 @@ export default function ReviewSessionPage() {
     setIdx((i) => i + 1);
     setPicked([]);
     setRevealed(false);
+    setLogError(null);
     setMasterError(null);
   }
 

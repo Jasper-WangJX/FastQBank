@@ -19,6 +19,7 @@ import {
   getDeck,
   getTagQuestionIds,
   getWrongSet,
+  masterWrong,
 } from "../lib/review";
 import { allSelected, toggleId } from "../lib/review/session";
 import Latex from "../components/Latex";
@@ -151,6 +152,30 @@ export default function ReviewEntryPage() {
 
   function onToggleQuestion(id: string) {
     setSelected((s) => toggleId(s, id));
+  }
+
+  // Per-row master from the wrong-set listing (spec §2.2 — clearable
+  // from the list as well as from a wrong-set card).
+  async function onMasterRow(id: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await masterWrong(id);
+      setItems((cur) => (cur ? cur.filter((x) => x.id !== id) : cur));
+      setTotal((t) => Math.max(0, t - 1));
+      setWrongTotal((t) => Math.max(0, t - 1));
+      setSourceIds((ids) => ids.filter((x) => x !== id));
+      setSelected((s) => {
+        if (!s.has(id)) return s;
+        const n = new Set(s);
+        n.delete(id);
+        return n;
+      });
+    } catch (e: unknown) {
+      setError(e instanceof ApiError ? e.message : "Network error");
+    } finally {
+      setBusy(false);
+    }
   }
 
   // "Select all" / "Deselect all" for the WHOLE active source (subtree
@@ -294,6 +319,15 @@ export default function ReviewEntryPage() {
                         <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">
                           {q.type}
                         </span>
+                        {activeId === WRONG && (
+                          <button
+                            disabled={busy}
+                            onClick={() => onMasterRow(q.id)}
+                            className="shrink-0 rounded-md border border-amber-400 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                          >
+                            Mastered
+                          </button>
+                        )}
                         <button
                           onClick={() => onToggleQuestion(q.id)}
                           className={
