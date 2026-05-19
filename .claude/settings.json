@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "WebSearch",
-      "Bash(cd \"/d/jasper/Documents/Coding/my_projects/AI-assisted question bank\" && find ./apps ./packages -not -path '*/.venv/*' -not -path '*/node_modules/*' -type f \\\\\\( -name \"*.test.ts\" -o -name \"*.test.tsx\" -o -name \"*.spec.ts\" -o -name \"*.spec.tsx\" -o -name \"*_test.py\" -o -name \"test_*.py\" \\\\\\))",
-      "Read(//d/d/jasper/Documents/Coding/my_projects/AI-assisted question bank/**)"
-    ]
-  }
-}
