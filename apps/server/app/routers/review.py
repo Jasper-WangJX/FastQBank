@@ -18,7 +18,7 @@ from app.deps import CurrentUser
 from app.models import Question, ReviewLog, WrongQuestion
 from app.question_query import (
     get_owned_question,
-    subtree_question_predicate,
+    multi_tag_predicate,
     tags_by_question,
     to_question_out,
 )
@@ -68,18 +68,21 @@ async def review_deck(
 @router.get("/review/tag-question-ids", response_model=TagQuestionIdsOut)
 async def review_tag_question_ids(
     user: CurrentUser,
-    tag_id: UUID | None = Query(None),
+    tag_id: list[UUID] = Query(default_factory=list),
+    tag_match: str = Query("all", pattern="^(all|any)$"),
     db: AsyncSession = Depends(get_db),
 ) -> TagQuestionIdsOut:
-    """Live owned question ids. With `tag_id`: that tag's subtree (for
-    the picker's per-tag "Select all"). Without `tag_id`: every live
-    owned question (the "All" source's "Select all")."""
+    """Live owned question ids. With one or more `tag_id`s: questions
+    that match under AND/OR (per `tag_match`). Without any: every live
+    owned question. Backs the picker's per-source "Select all"."""
     conds = [
         Question.user_id == user.id,
         Question.deleted_at.is_(None),
     ]
-    if tag_id is not None:
-        conds.append(await subtree_question_predicate(db, user.id, tag_id))
+    if tag_id:
+        conds.append(
+            await multi_tag_predicate(db, user.id, tag_id, tag_match)
+        )
     ids = (await db.scalars(select(Question.id).where(*conds))).all()
     return TagQuestionIdsOut(question_ids=list(ids))
 
