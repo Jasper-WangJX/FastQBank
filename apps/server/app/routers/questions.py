@@ -24,7 +24,7 @@ from app.deps import CurrentUser
 from app.models import Question, QuestionTag, Tag
 from app.question_query import (
     get_owned_question,
-    subtree_question_predicate,
+    multi_tag_predicate,
     tags_by_question,
     tags_for,
     to_question_out,
@@ -71,17 +71,19 @@ async def list_questions(
     db: AsyncSession = Depends(get_db),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    tag_id: UUID | None = Query(None),
+    tag_id: list[UUID] = Query(default_factory=list),
+    tag_match: str = Query("all", pattern="^(all|any)$"),
     q: str | None = Query(None),
 ) -> QuestionListOut:
-    """Paginated list with optional keyword (ILIKE on stem) and tag
-    filters. `total` is the match count BEFORE limit/offset."""
+    """Paginated list with optional keyword (ILIKE on stem) and one or
+    more tag filters joined by AND (`tag_match=all`, default) or OR
+    (`tag_match=any`). `total` is the match count BEFORE limit/offset."""
     conds = [Question.user_id == user.id, Question.deleted_at.is_(None)]
     if q:
         conds.append(Question.stem.ilike(f"%{q}%"))
-    if tag_id is not None:
+    if tag_id:
         conds.append(
-            await subtree_question_predicate(db, user.id, tag_id)
+            await multi_tag_predicate(db, user.id, tag_id, tag_match)
         )
 
     total = await db.scalar(
