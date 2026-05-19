@@ -21,7 +21,7 @@ interface Props {
   /** Currently active filter tag id, or null = "All" (no filter). */
   activeTagId: string | null;
   onSelect: (tagId: string | null) => void;
-  /** Called after a successful create/rename/move/delete so the parent
+  /** Called after a successful create/rename/delete so the parent
    *  can re-fetch tags (and re-fetch the question list). */
   onChanged: () => Promise<void> | void;
 }
