@@ -71,15 +71,22 @@ GENERATE_SYSTEM = (
     "'options' is a list of {'label','content'} with labels A,B,C,...; "
     "'correct' lists the correct label(s); single has exactly 1 correct, "
     "multi has >=1, judge has exactly options T/F with 1 correct. "
+    "Also output 'knowledge_summary': a 1-2 sentence study note stating "
+    "the key concept the question tests — do not restate the question or "
+    "reveal the answer. Also output 'tags': pick up to 3 MOST relevant "
+    "tag names FROM THE GIVEN EXISTING-TAG LIST ONLY; never invent a "
+    "tag; if none fit or the list is empty, return []. "
     + LATEX_RULE
-    + ' Reply with strict json: '
-    '{"questions": [{"stem","type","options","correct"}, ...]}.'
+    + ' Reply with strict json: {"questions": [{"stem","type",'
+    '"options","correct","knowledge_summary","tags"}, ...]}.'
 )
 
 
-def generate_user(seeds_json: str, n: int) -> str:
+def generate_user(seeds_json: str, n: int, tag_names: list[str]) -> str:
     return (
         f"Generate {n} new questions.\n\n"
+        f"Existing tags (choose tags only from these): "
+        f"{json.dumps(tag_names, ensure_ascii=False)}\n\n"
         f"Seed questions (JSON):\n{seeds_json}\n\n"
         "Return the json now."
     )

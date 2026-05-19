@@ -267,6 +267,20 @@ async def generate(
             detail="no valid seed questions found",
         )
 
+    tags = list(
+        (
+            await db.scalars(
+                select(Tag)
+                .where(Tag.user_id == user.id, Tag.deleted_at.is_(None))
+                .order_by(Tag.path)
+            )
+        ).all()
+    )
+    # lower-name -> canonical name (first wins, mirrors suggest_tags)
+    canon_by_lower: dict[str, str] = {}
+    for t in tags:
+        canon_by_lower.setdefault(t.name.strip().lower(), t.name)
+
     seeds_json = json.dumps(
         [
             {
@@ -283,7 +297,9 @@ async def generate(
         db,
         user,
         prompts.GENERATE_SYSTEM,
-        prompts.generate_user(seeds_json, body.count),
+        prompts.generate_user(
+            seeds_json, body.count, [t.name for t in tags]
+        ),
         temperature=0.8,  # generation wants variety, not determinism
     )
 
@@ -310,6 +326,21 @@ async def generate(
             if isinstance(o, dict)
         ]
         norm_correct = [str(c) for c in correct]
+        ks = q.get("knowledge_summary", "")
+        ks = ks.strip() if isinstance(ks, str) else ""
+        raw_tags = q.get("tags", [])
+        raw_tags = raw_tags if isinstance(raw_tags, list) else []
+        norm_tags: list[str] = []
+        seen_t: set[str] = set()
+        for tg in raw_tags:
+            if not isinstance(tg, str):
+                continue
+            key = tg.strip().lower()
+            if key in canon_by_lower and key not in seen_t:
+                seen_t.add(key)
+                norm_tags.append(canon_by_lower[key])
+            if len(norm_tags) == 3:
+                break
         valid, err = True, None
         try:
             QuestionIn(
@@ -329,6 +360,8 @@ async def generate(
                 correct=norm_correct,
                 valid=valid,
                 validation_error=err,
+                knowledge_summary=ks,
+                tags=norm_tags,
             )
         )
 
