@@ -252,8 +252,11 @@ class GenerateIn(BaseModel):
 
 class GeneratedQuestion(BaseModel):
     """One model-produced draft. `valid` reflects the stage-2 QuestionIn
-    cross-field rules; the stage-8 UI will let the user fix invalid ones
-    before import, so a bad draft is surfaced, not dropped."""
+    cross-field rules; the stage-8 review flow surfaces a bad draft
+    (filtered out client-side) rather than dropping it server-side.
+    `tags` are existing owned tag NAMES the model picked (resolved to
+    ids only at "Add to question bank" time); `knowledge_summary` is the
+    per-question analysis."""
 
     stem: str
     type: str
@@ -261,6 +264,8 @@ class GeneratedQuestion(BaseModel):
     correct: list[str]
     valid: bool
     validation_error: str | None = None
+    knowledge_summary: str = ""
+    tags: list[str] = []
 
 
 class GenerateOut(BaseModel):

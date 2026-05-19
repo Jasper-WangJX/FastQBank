@@ -94,9 +94,49 @@ def _strip_json_fence(s: str) -> str:
     return s.strip()
 
 
+def _heal_latex_json(s: str) -> str:
+    """Make model-emitted LaTeX-in-JSON parseable.
+
+    The LaTeX-strict prompts make the model put commands like \\frac,
+    \\sum, \\theta INSIDE JSON string values. A lone backslash is
+    invalid JSON (only \\" \\\\ \\/ \\b \\f \\n \\r \\t \\uXXXX are
+    legal), so json.loads either raises ("unparseable") or — worse —
+    silently corrupts the math when the command happens to start a
+    valid escape (\\frac -> \\f = formfeed).
+
+    Domain assumption: in these endpoints a backslash is ALWAYS a LaTeX
+    literal, except `\\\\` (an already-escaped pair) and `\\"` (an
+    escaped quote the model uses to embed a quote in a string). Every
+    other lone backslash is doubled so it survives json.loads as a
+    literal backslash. JSON has no backslashes outside string literals,
+    so scanning the whole text and only rewriting backslash runs is
+    structurally safe.
+    """
+    out: list[str] = []
+    i, n = 0, len(s)
+    while i < n:
+        c = s[i]
+        if c == "\\" and i + 1 < n:
+            nxt = s[i + 1]
+            if nxt == "\\":  # keep an already-escaped pair as-is
+                out.append("\\\\")
+                i += 2
+                continue
+            if nxt == '"':  # keep an escaped quote
+                out.append('\\"')
+                i += 2
+                continue
+            out.append("\\\\")  # lone backslash -> LaTeX literal
+            i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def _parse_json_obj(raw: str) -> dict:
     try:
-        data = json.loads(_strip_json_fence(raw))
+        data = json.loads(_heal_latex_json(_strip_json_fence(raw)))
     except (json.JSONDecodeError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -267,6 +307,20 @@ async def generate(
             detail="no valid seed questions found",
         )
 
+    tags = list(
+        (
+            await db.scalars(
+                select(Tag)
+                .where(Tag.user_id == user.id, Tag.deleted_at.is_(None))
+                .order_by(Tag.path)
+            )
+        ).all()
+    )
+    # lower-name -> canonical name (first wins, mirrors suggest_tags)
+    canon_by_lower: dict[str, str] = {}
+    for t in tags:
+        canon_by_lower.setdefault(t.name.strip().lower(), t.name)
+
     seeds_json = json.dumps(
         [
             {
@@ -283,7 +337,9 @@ async def generate(
         db,
         user,
         prompts.GENERATE_SYSTEM,
-        prompts.generate_user(seeds_json, body.count),
+        prompts.generate_user(
+            seeds_json, body.count, [t.name for t in tags]
+        ),
         temperature=0.8,  # generation wants variety, not determinism
     )
 
@@ -310,6 +366,21 @@ async def generate(
             if isinstance(o, dict)
         ]
         norm_correct = [str(c) for c in correct]
+        ks = q.get("knowledge_summary", "")
+        ks = ks.strip() if isinstance(ks, str) else ""
+        raw_tags = q.get("tags", [])
+        raw_tags = raw_tags if isinstance(raw_tags, list) else []
+        norm_tags: list[str] = []
+        seen_t: set[str] = set()
+        for tg in raw_tags:
+            if not isinstance(tg, str):
+                continue
+            key = tg.strip().lower()
+            if key in canon_by_lower and key not in seen_t:
+                seen_t.add(key)
+                norm_tags.append(canon_by_lower[key])
+            if len(norm_tags) == 3:
+                break
         valid, err = True, None
         try:
             QuestionIn(
@@ -329,6 +400,8 @@ async def generate(
                 correct=norm_correct,
                 valid=valid,
                 validation_error=err,
+                knowledge_summary=ks,
+                tags=norm_tags,
             )
         )
 

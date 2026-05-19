@@ -11,7 +11,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { Question } from "../lib/qbank";
+import { createQuestion } from "../lib/qbank";
 import { getWrongSet, masterWrong, postReviewLog } from "../lib/review";
+import { isAiCard } from "../lib/review/aiDraft";
 import {
   buildDeck,
   isAnswerCorrect,
@@ -26,6 +28,7 @@ interface ReviewConfig {
   shuffleOptions: boolean;
   fastMode: boolean;
   isWrongSetSession: boolean;
+  notice?: string;
 }
 
 interface Result {
@@ -78,6 +81,11 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
   const [logError, setLogError] = useState<string | null>(null);
   const [masterError, setMasterError] = useState<string | null>(null);
   const [wrongNote, setWrongNote] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(
+    config.notice ?? null,
+  );
+  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [addError, setAddError] = useState<string | null>(null);
   const loggedRef = useRef<Set<number>>(new Set());
   // Fast mode auto-advances each card after a brief pause; this holds
   // the pending timer so next()/unmount can cancel it (no double-skip).
@@ -209,7 +217,9 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
     if (fastMode) {
       advanceTimer.current = window.setTimeout(() => next(), 800);
     }
-    if (!loggedRef.current.has(idx)) {
+    // AI cards are ephemeral (no DB id) — never log them, so a wrong
+    // answer also never enters the wrong set (spec §2.5).
+    if (!isAiCard(q) && !loggedRef.current.has(idx)) {
       loggedRef.current.add(idx);
       try {
         await postReviewLog(q.id, correct);
@@ -248,6 +258,25 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
     }
   }
 
+  async function onAddToBank() {
+    if (added.has(q.id)) return;
+    try {
+      await createQuestion({
+        stem: q.stem,
+        type: q.type,
+        options: q.options,
+        correct: q.correct,
+        knowledge_summary: q.knowledge_summary,
+        tag_ids: q.tags.map((t) => t.id),
+        source: "ai",
+      });
+      setAdded((s) => new Set(s).add(q.id));
+      setAddError(null);
+    } catch {
+      setAddError("Couldn't add — click to retry.");
+    }
+  }
+
   function next() {
     if (advanceTimer.current !== null) {
       window.clearTimeout(advanceTimer.current);
@@ -258,6 +287,7 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
     setRevealed(false);
     setLogError(null);
     setMasterError(null);
+    setAddError(null);
   }
 
   const correctSet = new Set(q.correct);
@@ -265,6 +295,17 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      {notice && (
+        <div className="mb-3 flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <span>{notice}</span>
+          <button
+            onClick={() => setNotice(null)}
+            className="rounded border border-amber-300 px-2 py-0.5 text-xs hover:bg-amber-100"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {logError && (
         <div className="mb-3 flex items-center justify-between rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
           <span>{logError}</span>
@@ -327,7 +368,7 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
 
       {revealed && q.knowledge_summary && (
         <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-          💡 {q.knowledge_summary}
+          💡 <Latex text={q.knowledge_summary} />
         </div>
       )}
 
@@ -373,6 +414,20 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
               </button>
             )}
           </>
+        )}
+        {isAiCard(q) && (
+          <div className="flex items-center gap-2">
+            <button
+              disabled={added.has(q.id)}
+              onClick={onAddToBank}
+              className="rounded-md border border-emerald-500 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+            >
+              {added.has(q.id) ? "Added ✓" : "Add to question bank"}
+            </button>
+            {addError && (
+              <span className="text-xs text-red-700">{addError}</span>
+            )}
+          </div>
         )}
         <button
           onClick={() => navigate("/review")}

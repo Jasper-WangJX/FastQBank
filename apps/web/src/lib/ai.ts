@@ -28,6 +28,21 @@ export interface ParseQuestionOut {
   matched: boolean;
 }
 
+export interface GeneratedQuestion {
+  stem: string;
+  type: QuestionType;
+  options: Option[];
+  correct: string[];
+  valid: boolean;
+  validation_error: string | null;
+  knowledge_summary: string;
+  tags: string[];
+}
+
+export interface GenerateOut {
+  questions: GeneratedQuestion[];
+}
+
 export interface AiUsageOut {
   total_tokens: number;
   request_count: number;
@@ -60,6 +75,18 @@ export function knowledgeSummary(
 
 export function getAiUsage(): Promise<AiUsageOut> {
   return apiFetch<AiUsageOut>("/ai/usage");
+}
+
+/** Generate `count` new questions seeded by the picked question ids.
+ *  Each draft carries its own existing-tag names + knowledge_summary. */
+export function generate(
+  seedQuestionIds: string[],
+  count: number,
+): Promise<GenerateOut> {
+  return apiFetch<GenerateOut>("/ai/generate", {
+    method: "POST",
+    body: { seed_question_ids: seedQuestionIds, count },
+  });
 }
 
 // --- Vision task (Gemini) ---

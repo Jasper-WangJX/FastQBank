@@ -21,7 +21,13 @@ import {
   getWrongSet,
   masterWrong,
 } from "../lib/review";
-import { allSelected, toggleId } from "../lib/review/session";
+import { generate } from "../lib/ai";
+import { buildAiCards, tagsByLowerName } from "../lib/review/aiDraft";
+import {
+  allSelected,
+  shuffleWithRng,
+  toggleId,
+} from "../lib/review/session";
 import Latex from "../components/Latex";
 import { QuestionCard, QuestionCardGrid } from "../components/QuestionCard";
 
@@ -58,6 +64,8 @@ export default function ReviewEntryPage() {
   const [count, setCount] = useState(20);
   const [shuffleOptions, setShuffleOptions] = useState(true);
   const [fastMode, setFastMode] = useState(false);
+  const [aiMode, setAiMode] = useState<"off" | "mixed" | "ai">("off");
+  const [aiCount, setAiCount] = useState(5);
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -206,23 +214,87 @@ export default function ReviewEntryPage() {
     setError(null);
     try {
       const ids = [...selected];
-      const deck = await getDeck(
-        ids,
-        randomPick ? count : undefined,
-      );
-      if (deck.items.length === 0) {
-        setError("None of the selected questions are available anymore.");
+
+      // --- Off: existing bank-only path, unchanged ---
+      if (aiMode === "off") {
+        const deck = await getDeck(ids, randomPick ? count : undefined);
+        if (deck.items.length === 0) {
+          setError("None of the selected questions are available anymore.");
+          return;
+        }
+        navigate("/review/session", {
+          state: {
+            reviewConfig: {
+              questions: deck.items,
+              requestedOrder: ids,
+              randomOrder: randomPick,
+              shuffleOptions,
+              fastMode,
+              isWrongSetSession: activeId === WRONG,
+            },
+          },
+        });
         return;
       }
+
+      // --- Mixed / AI only: selected ids are the generation seeds ---
+      const gen = await generate(ids, aiCount);
+      const aiCards = buildAiCards(
+        gen.questions,
+        tagsByLowerName(tags),
+      );
+
+      // AiCard extends Question, so AiCard[] is assignable to Question[].
+      let questions: Question[] = aiCards;
+      let requestedOrder = aiCards.map((c) => c.id);
+      let notice: string | undefined;
+
+      if (aiMode === "ai") {
+        if (aiCards.length === 0) {
+          setError(
+            "AI returned no usable questions. Try different seeds or try again.",
+          );
+          return;
+        }
+      } else {
+        // mixed: selected bank questions + the AI cards
+        const bank = await getDeck(ids, randomPick ? count : undefined);
+        if (bank.items.length === 0 && aiCards.length === 0) {
+          setError("None of the selected questions are available anymore.");
+          return;
+        }
+        // Interleave bank + AI so they're mixed throughout the deck
+        // (not all bank first then all AI). Shuffle once here and make
+        // requestedOrder match, so the order holds whether or not
+        // "Random pick" is on.
+        questions = shuffleWithRng(
+          [...bank.items, ...aiCards],
+          Math.random,
+        );
+        requestedOrder = questions.map((q) => q.id);
+        // Both-empty already errored above, so here at least one side
+        // has cards — tell the user if the other side dropped out.
+        if (bank.items.length === 0) {
+          notice =
+            "None of your selected bank questions are available; continuing with AI questions only.";
+        } else if (aiCards.length === 0) {
+          notice =
+            "AI generation produced no usable questions; continuing with your selected questions.";
+        }
+      }
+
       navigate("/review/session", {
         state: {
           reviewConfig: {
-            questions: deck.items,
-            requestedOrder: ids,
+            questions,
+            requestedOrder,
             randomOrder: randomPick,
             shuffleOptions,
             fastMode,
-            isWrongSetSession: activeId === WRONG,
+            // AI modes never show the mastered button, even when the
+            // seeds came from the wrong-set tab — by design (spec §5.2).
+            isWrongSetSession: false,
+            notice,
           },
         },
       });
@@ -502,6 +574,40 @@ export default function ReviewEntryPage() {
           />
           Fast mode
         </label>
+        <div className="flex items-center gap-1">
+          <span className="text-gray-600">AI:</span>
+          <div className="flex overflow-hidden rounded-md border border-gray-300 text-xs">
+            {(["off", "mixed", "ai"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setAiMode(m)}
+                className={
+                  "px-2 py-1 " +
+                  (aiMode === m
+                    ? "bg-slate-800 text-white"
+                    : "text-gray-600 hover:bg-gray-50")
+                }
+              >
+                {m === "off" ? "Off" : m === "mixed" ? "Mixed" : "AI only"}
+              </button>
+            ))}
+          </div>
+          <input
+            type="number"
+            min={1}
+            max={10}
+            value={aiCount}
+            disabled={aiMode === "off"}
+            onChange={(e) =>
+              setAiCount(
+                Math.min(10, Math.max(1, Number(e.target.value) || 1)),
+              )
+            }
+            className="w-14 rounded-md border border-gray-300 px-2 py-1 disabled:bg-gray-50"
+            aria-label="AI question count"
+          />
+        </div>
         <button
           disabled={selected.size === 0 || busy}
           onClick={onSubmit}
@@ -512,8 +618,11 @@ export default function ReviewEntryPage() {
       </div>
       <p className="mt-2 text-xs text-gray-500">
         Fast mode: single/judge reveal the moment you pick (no Check
-        button); multiple-choice still needs Submit. Both modes score and
-        feed the wrong set. Your selection isn't saved between visits.
+        button); multiple-choice still needs Submit. AI: seeds are the
+        questions you ticked (≥1 needed); generated questions are{" "}
+        <strong>not</strong> saved to your bank automatically — use "Add
+        to question bank" during review. Your selection isn't saved
+        between visits.
       </p>
     </div>
   );
