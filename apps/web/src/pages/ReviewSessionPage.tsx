@@ -8,7 +8,7 @@
 // fresh state) fully remounts a brand-new session instead of reusing
 // the stale deck/state.
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import type { Question } from "../lib/qbank";
 import { getWrongSet, masterWrong, postReviewLog } from "../lib/review";
@@ -79,6 +79,20 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
   const [masterError, setMasterError] = useState<string | null>(null);
   const [wrongNote, setWrongNote] = useState<string | null>(null);
   const loggedRef = useRef<Set<number>>(new Set());
+  // Fast mode auto-advances each card after a brief pause; this holds
+  // the pending timer so next()/unmount can cancel it (no double-skip).
+  const advanceTimer = useRef<number | null>(null);
+
+  // Cancel a pending fast-mode auto-advance if the runner unmounts
+  // (e.g. Quit). Cleanup-only effect — no setState in the body, so it
+  // satisfies react-hooks/set-state-in-effect.
+  useEffect(() => {
+    return () => {
+      if (advanceTimer.current !== null) {
+        window.clearTimeout(advanceTimer.current);
+      }
+    };
+  }, []);
 
   if (deck.length === 0) {
     return (
@@ -191,6 +205,10 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
     setRevealed(true);
     const correct = isAnswerCorrect(q, sel);
     setResults((r) => [...r, { question: q, correct }]);
+    // Fast mode: linger briefly on the result, then auto-advance.
+    if (fastMode) {
+      advanceTimer.current = window.setTimeout(() => next(), 1100);
+    }
     if (!loggedRef.current.has(idx)) {
       loggedRef.current.add(idx);
       try {
@@ -231,6 +249,10 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
   }
 
   function next() {
+    if (advanceTimer.current !== null) {
+      window.clearTimeout(advanceTimer.current);
+      advanceTimer.current = null;
+    }
     setIdx((i) => i + 1);
     setPicked([]);
     setRevealed(false);
@@ -311,13 +333,18 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
 
       <div className="mt-5 flex items-center gap-2">
         {!revealed ? (
-          <button
-            disabled={picked.length === 0}
-            onClick={() => doReveal()}
-            className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-          >
-            {isMulti ? "Submit" : "Check"}
-          </button>
+          // Fast mode + single/judge: picking auto-reveals, so the
+          // Check button is useless and hidden. Multi still needs
+          // Submit; non-fast always needs Check/Submit.
+          fastMode && !isMulti ? null : (
+            <button
+              disabled={picked.length === 0}
+              onClick={() => doReveal()}
+              className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+            >
+              {isMulti ? "Submit" : "Check"}
+            </button>
+          )
         ) : (
           <>
             {isWrongSetSession && (
@@ -334,12 +361,15 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
                 )}
               </div>
             )}
-            <button
-              onClick={next}
-              className="ml-auto rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-            >
-              {idx + 1 >= deck.length ? "Finish" : "Next →"}
-            </button>
+            {/* Fast mode auto-advances; only non-fast shows Next. */}
+            {!fastMode && (
+              <button
+                onClick={next}
+                className="ml-auto rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+              >
+                {idx + 1 >= deck.length ? "Finish" : "Next →"}
+              </button>
+            )}
           </>
         )}
         <button
