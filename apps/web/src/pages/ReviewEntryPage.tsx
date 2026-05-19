@@ -23,7 +23,11 @@ import {
 } from "../lib/review";
 import { generate } from "../lib/ai";
 import { buildAiCards, tagsByLowerName } from "../lib/review/aiDraft";
-import { allSelected, toggleId } from "../lib/review/session";
+import {
+  allSelected,
+  shuffleWithRng,
+  toggleId,
+} from "../lib/review/session";
 import Latex from "../components/Latex";
 import { QuestionCard, QuestionCardGrid } from "../components/QuestionCard";
 
@@ -259,11 +263,15 @@ export default function ReviewEntryPage() {
           setError("None of the selected questions are available anymore.");
           return;
         }
-        questions = [...bank.items, ...aiCards];
-        requestedOrder = [
-          ...bank.items.map((q) => q.id),
-          ...aiCards.map((c) => c.id),
-        ];
+        // Interleave bank + AI so they're mixed throughout the deck
+        // (not all bank first then all AI). Shuffle once here and make
+        // requestedOrder match, so the order holds whether or not
+        // "Random pick" is on.
+        questions = shuffleWithRng(
+          [...bank.items, ...aiCards],
+          Math.random,
+        );
+        requestedOrder = questions.map((q) => q.id);
         // Both-empty already errored above, so here at least one side
         // has cards — tell the user if the other side dropped out.
         if (bank.items.length === 0) {
