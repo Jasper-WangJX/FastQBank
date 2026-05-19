@@ -378,9 +378,6 @@ export default function ReviewEntryPage() {
               setOffset(0);
             }}
             onOpenManage={() => setManageOpen(true)}
-            variant="inline"
-            disabled={activeId === WRONG || activeId === ALL}
-            disabledHint="Cancel All / Wrong to filter by tag."
           />
         </div>
 

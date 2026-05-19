@@ -215,7 +215,6 @@ export default function QuestionListPage() {
             setOffset(0);
           }}
           onOpenManage={() => setManageOpen(true)}
-          variant="popover"
         />
       </div>
 
