@@ -264,7 +264,12 @@ export default function ReviewEntryPage() {
           ...bank.items.map((q) => q.id),
           ...aiCards.map((c) => c.id),
         ];
-        if (aiCards.length === 0) {
+        // Both-empty already errored above, so here at least one side
+        // has cards — tell the user if the other side dropped out.
+        if (bank.items.length === 0) {
+          notice =
+            "None of your selected bank questions are available; continuing with AI questions only.";
+        } else if (aiCards.length === 0) {
           notice =
             "AI generation produced no usable questions; continuing with your selected questions.";
         }
@@ -278,6 +283,8 @@ export default function ReviewEntryPage() {
             randomOrder: randomPick,
             shuffleOptions,
             fastMode,
+            // AI modes never show the mastered button, even when the
+            // seeds came from the wrong-set tab — by design (spec §5.2).
             isWrongSetSession: false,
             notice,
           },
