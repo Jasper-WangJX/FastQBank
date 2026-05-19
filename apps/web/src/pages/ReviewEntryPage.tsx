@@ -45,6 +45,11 @@ export default function ReviewEntryPage() {
   // The one global selection set.
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  // Full id list of the active source (subtree or wrong set) — drives
+  // the global toggle label/action so it reflects the WHOLE source,
+  // not just the loaded page.
+  const [sourceIds, setSourceIds] = useState<string[]>([]);
+
   const [randomPick, setRandomPick] = useState(false);
   const [count, setCount] = useState(20);
   const [shuffleOptions, setShuffleOptions] = useState(true);
@@ -82,13 +87,7 @@ export default function ReviewEntryPage() {
     let cancelled = false;
     const load =
       activeId === WRONG
-        ? getWrongSet().then((w) => {
-            if (!cancelled) {
-              setWrongTotal(w.total);
-              return { items: w.items, total: w.total };
-            }
-            return { items: [], total: 0 };
-          })
+        ? getWrongSet().then((w) => ({ items: w.items, total: w.total }))
         : listQuestions({
             tagId: activeId,
             limit: PAGE_SIZE,
@@ -100,6 +99,7 @@ export default function ReviewEntryPage() {
         setItems(r.items);
         setTotal(r.total);
         setError(null);
+        if (activeId === WRONG) setWrongTotal(r.total);
       })
       .catch((e: unknown) => {
         if (!cancelled) {
@@ -112,15 +112,38 @@ export default function ReviewEntryPage() {
     };
   }, [activeId, offset]);
 
+  // Whole-source id set for the global Select-all/Deselect-all (covers
+  // the entire subtree / wrong set, independent of pagination).
+  useEffect(() => {
+    if (!activeId) {
+      return;
+    }
+    let cancelled = false;
+    const load =
+      activeId === WRONG
+        ? getWrongSet().then((w) => w.items.map((q) => q.id))
+        : getTagQuestionIds(activeId);
+    load
+      .then((ids) => {
+        if (!cancelled) setSourceIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setSourceIds([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId]);
+
   const sortedTags = useMemo(
     () => tags.slice().sort((a, b) => a.path.localeCompare(b.path)),
     [tags],
   );
 
-  const listIds = (items ?? []).map((q) => q.id);
-  const everySelected = allSelected(listIds, selected);
+  const everySelected = allSelected(sourceIds, selected);
 
   function pick(id: string) {
+    setError(null);
     setActiveId(id);
     setOffset(0);
     setItems(null); // reset to loading state for the new source
@@ -132,30 +155,17 @@ export default function ReviewEntryPage() {
 
   // "Select all" / "Deselect all" for the WHOLE active source (subtree
   // or wrong set), not just the visible page.
-  async function onToggleAll() {
-    setBusy(true);
-    setError(null);
-    try {
-      let ids: string[];
-      if (activeId === WRONG) {
-        ids = (await getWrongSet()).items.map((q) => q.id);
-      } else {
-        ids = await getTagQuestionIds(activeId);
+  function onToggleAll() {
+    if (sourceIds.length === 0) return;
+    setSelected((s) => {
+      const next = new Set(s);
+      const addMode = !sourceIds.every((id) => next.has(id));
+      for (const id of sourceIds) {
+        if (addMode) next.add(id);
+        else next.delete(id);
       }
-      setSelected((s) => {
-        const next = new Set(s);
-        const addMode = !ids.every((id) => next.has(id));
-        for (const id of ids) {
-          if (addMode) next.add(id);
-          else next.delete(id);
-        }
-        return next;
-      });
-    } catch (e: unknown) {
-      setError(e instanceof ApiError ? e.message : "Network error");
-    } finally {
-      setBusy(false);
-    }
+      return next;
+    });
   }
 
   async function onSubmit() {
@@ -254,7 +264,7 @@ export default function ReviewEntryPage() {
                     : `Questions (${total})`}
                 </span>
                 <button
-                  disabled={busy || (items ?? []).length === 0}
+                  disabled={sourceIds.length === 0}
                   onClick={onToggleAll}
                   className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
                 >
