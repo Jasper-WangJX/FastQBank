@@ -6,12 +6,16 @@ Exits 0 on success; raises AssertionError (non-zero) on the first failure.
 """
 
 import asyncio
+import os
+import sys
 import uuid
 
-import httpx
-from httpx import ASGITransport
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main import app
+import httpx  # noqa: E402
+from httpx import ASGITransport  # noqa: E402
+
+from main import app  # noqa: E402
 
 
 async def main() -> None:
