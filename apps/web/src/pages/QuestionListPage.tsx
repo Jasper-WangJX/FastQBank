@@ -13,6 +13,7 @@ import {
 } from "../lib/qbank";
 import Latex from "../components/Latex";
 import TagManagePanel from "../components/tags/TagManagePanel";
+import { QuestionCard, QuestionCardGrid } from "../components/QuestionCard";
 import { getDesktop } from "../lib/desktop";
 
 const PAGE_SIZE = 10;
@@ -30,6 +31,8 @@ export default function QuestionListPage() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Presentation only — default "list" preserves the original UX.
+  const [view, setView] = useState<"list" | "cards">("list");
 
   // Tag list for the filter dropdown (loaded once).
   useEffect(() => {
@@ -167,6 +170,30 @@ export default function QuestionListPage() {
             Clear filters
           </button>
         )}
+        <div className="ml-auto flex overflow-hidden rounded-md border border-gray-300 text-sm">
+          <button
+            onClick={() => setView("list")}
+            className={
+              "px-3 py-2 " +
+              (view === "list"
+                ? "bg-slate-800 text-white"
+                : "text-gray-600 hover:bg-gray-50")
+            }
+          >
+            List
+          </button>
+          <button
+            onClick={() => setView("cards")}
+            className={
+              "px-3 py-2 " +
+              (view === "cards"
+                ? "bg-slate-800 text-white"
+                : "text-gray-600 hover:bg-gray-50")
+            }
+          >
+            Cards
+          </button>
+        </div>
       </div>
 
       {/* Tag filter + management (Phase 7.1: tag CRUD lives here; the
@@ -199,6 +226,33 @@ export default function QuestionListPage() {
               ? "No questions match these filters."
               : "No questions yet. Create your first one."}
           </p>
+        ) : view === "cards" ? (
+          <QuestionCardGrid>
+            {items.map((qq) => (
+              <QuestionCard
+                key={qq.id}
+                question={qq}
+                actions={
+                  <>
+                    <button
+                      disabled={busy}
+                      onClick={() => navigate(`/questions/${qq.id}/edit`)}
+                      className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      disabled={busy}
+                      onClick={() => onDelete(qq.id, qq.stem)}
+                      className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      Delete
+                    </button>
+                  </>
+                }
+              />
+            ))}
+          </QuestionCardGrid>
         ) : (
           <div className="divide-y divide-gray-100 rounded-md border border-gray-200">
             {items.map((qq) => (
