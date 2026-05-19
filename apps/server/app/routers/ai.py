@@ -94,9 +94,49 @@ def _strip_json_fence(s: str) -> str:
     return s.strip()
 
 
+def _heal_latex_json(s: str) -> str:
+    """Make model-emitted LaTeX-in-JSON parseable.
+
+    The LaTeX-strict prompts make the model put commands like \\frac,
+    \\sum, \\theta INSIDE JSON string values. A lone backslash is
+    invalid JSON (only \\" \\\\ \\/ \\b \\f \\n \\r \\t \\uXXXX are
+    legal), so json.loads either raises ("unparseable") or — worse —
+    silently corrupts the math when the command happens to start a
+    valid escape (\\frac -> \\f = formfeed).
+
+    Domain assumption: in these endpoints a backslash is ALWAYS a LaTeX
+    literal, except `\\\\` (an already-escaped pair) and `\\"` (an
+    escaped quote the model uses to embed a quote in a string). Every
+    other lone backslash is doubled so it survives json.loads as a
+    literal backslash. JSON has no backslashes outside string literals,
+    so scanning the whole text and only rewriting backslash runs is
+    structurally safe.
+    """
+    out: list[str] = []
+    i, n = 0, len(s)
+    while i < n:
+        c = s[i]
+        if c == "\\" and i + 1 < n:
+            nxt = s[i + 1]
+            if nxt == "\\":  # keep an already-escaped pair as-is
+                out.append("\\\\")
+                i += 2
+                continue
+            if nxt == '"':  # keep an escaped quote
+                out.append('\\"')
+                i += 2
+                continue
+            out.append("\\\\")  # lone backslash -> LaTeX literal
+            i += 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def _parse_json_obj(raw: str) -> dict:
     try:
-        data = json.loads(_strip_json_fence(raw))
+        data = json.loads(_heal_latex_json(_strip_json_fence(raw)))
     except (json.JSONDecodeError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
