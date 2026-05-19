@@ -12,7 +12,8 @@ import {
   type Tag,
 } from "../lib/qbank";
 import Latex from "../components/Latex";
-import TagManagePanel from "../components/tags/TagManagePanel";
+import TagFilter from "../components/tags/TagFilter";
+import TagManageDrawer from "../components/tags/TagManageDrawer";
 import { QuestionCard, QuestionCardGrid } from "../components/QuestionCard";
 import { getDesktop } from "../lib/desktop";
 
@@ -23,7 +24,9 @@ export default function QuestionListPage() {
 
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
-  const [tagId, setTagId] = useState("");
+  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [tagMatch, setTagMatch] = useState<"all" | "any">("all");
+  const [manageOpen, setManageOpen] = useState(false);
   const [offset, setOffset] = useState(0);
   const [tick, setTick] = useState(0); // bump to force a refetch
 
@@ -62,7 +65,8 @@ export default function QuestionListPage() {
       limit: PAGE_SIZE,
       offset,
       q: debouncedQ || null,
-      tagId: tagId || null,
+      tagIds: tagIds.length > 0 ? tagIds : undefined,
+      tagMatch: tagIds.length > 0 ? tagMatch : undefined,
     })
       .then((res) => {
         if (cancelled) return;
@@ -85,7 +89,7 @@ export default function QuestionListPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQ, tagId, offset, tick]);
+  }, [debouncedQ, tagIds, tagMatch, offset, tick]);
 
   async function onDelete(id: string, stem: string) {
     if (!window.confirm(`Delete this question?\n\n${stem.slice(0, 80)}`)) {
@@ -122,7 +126,7 @@ export default function QuestionListPage() {
   const items = data?.items ?? [];
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + PAGE_SIZE, total);
-  const hasFilters = q !== "" || tagId !== "";
+  const hasFilters = q !== "" || tagIds.length > 0;
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -162,7 +166,7 @@ export default function QuestionListPage() {
           <button
             onClick={() => {
               setQ("");
-              setTagId("");
+              setTagIds([]);
               setOffset(0);
             }}
             className="rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
@@ -196,17 +200,22 @@ export default function QuestionListPage() {
         </div>
       </div>
 
-      {/* Tag filter + management (Phase 7.1: tag CRUD lives here; the
-          standalone /tags page was removed). */}
+      {/* Tag filter + management */}
       <div className="mt-3">
-        <TagManagePanel
+        <TagFilter
           tags={tags}
-          activeTagId={tagId || null}
-          onSelect={(id) => {
-            setTagId(id ?? "");
+          selectedIds={tagIds}
+          onChangeSelected={(ids) => {
+            setTagIds(ids);
             setOffset(0);
           }}
-          onChanged={reloadTagsAndList}
+          match={tagMatch}
+          onChangeMatch={(m) => {
+            setTagMatch(m);
+            setOffset(0);
+          }}
+          onOpenManage={() => setManageOpen(true)}
+          variant="popover"
         />
       </div>
 
@@ -323,6 +332,18 @@ export default function QuestionListPage() {
           </button>
         </div>
       </div>
+      <TagManageDrawer
+        open={manageOpen}
+        onClose={async () => {
+          setManageOpen(false);
+          // After closing, drop any selected ids whose tags were deleted.
+          const live = new Set(tags.map((t) => t.id));
+          const filtered = tagIds.filter((id) => live.has(id));
+          if (filtered.length !== tagIds.length) setTagIds(filtered);
+        }}
+        tags={tags}
+        onChanged={reloadTagsAndList}
+      />
     </div>
   );
 }
