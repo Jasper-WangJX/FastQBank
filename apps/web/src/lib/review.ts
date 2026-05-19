@@ -26,10 +26,11 @@ export function getDeck(
   return apiFetch<DeckOut>("/review/deck", { method: "POST", body });
 }
 
-/** Every live question id under a tag's subtree (for "Select all"). */
-export function getTagQuestionIds(tagId: string): Promise<string[]> {
+/** Live question ids: a tag's subtree, or (no arg) ALL the user's. */
+export function getTagQuestionIds(tagId?: string): Promise<string[]> {
+  const qs = tagId ? `?tag_id=${encodeURIComponent(tagId)}` : "";
   return apiFetch<{ question_ids: string[] }>(
-    `/review/tag-question-ids?tag_id=${encodeURIComponent(tagId)}`,
+    `/review/tag-question-ids${qs}`,
   ).then((r) => r.question_ids);
 }
 

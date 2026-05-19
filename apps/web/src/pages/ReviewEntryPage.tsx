@@ -24,8 +24,9 @@ import {
 import { allSelected, toggleId } from "../lib/review/session";
 import Latex from "../components/Latex";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 const WRONG = "__wrong__"; // sentinel "tag" id for the wrong-set entry
+const ALL = "__all__"; // sentinel: every question (no tag filter)
 
 function tagDepth(t: Tag): number {
   return t.path.split("/").length - 1;
@@ -90,7 +91,7 @@ export default function ReviewEntryPage() {
       activeId === WRONG
         ? getWrongSet().then((w) => ({ items: w.items, total: w.total }))
         : listQuestions({
-            tagId: activeId,
+            tagId: activeId === ALL ? null : activeId,
             limit: PAGE_SIZE,
             offset,
           }).then((r) => ({ items: r.items, total: r.total }));
@@ -123,7 +124,9 @@ export default function ReviewEntryPage() {
     const load =
       activeId === WRONG
         ? getWrongSet().then((w) => w.items.map((q) => q.id))
-        : getTagQuestionIds(activeId);
+        : activeId === ALL
+          ? getTagQuestionIds()
+          : getTagQuestionIds(activeId);
     load
       .then((ids) => {
         if (!cancelled) setSourceIds(ids);
@@ -252,6 +255,17 @@ export default function ReviewEntryPage() {
           >
             ⚠ Wrong questions ({wrongTotal})
           </button>
+          <button
+            onClick={() => pick(ALL)}
+            className={
+              "mt-1 block w-full rounded px-2 py-1 text-left text-sm " +
+              (activeId === ALL
+                ? "bg-slate-800 text-white"
+                : "text-gray-700 hover:bg-gray-100")
+            }
+          >
+            All questions
+          </button>
           <div className="my-2 border-t border-gray-100" />
           {sortedTags.length === 0 ? (
             <p className="px-2 text-xs text-gray-400">No tags yet.</p>
@@ -286,7 +300,9 @@ export default function ReviewEntryPage() {
                 <span className="text-sm font-medium">
                   {activeId === WRONG
                     ? `Wrong questions (${total})`
-                    : `Questions (${total})`}
+                    : activeId === ALL
+                      ? `All questions (${total})`
+                      : `Questions (${total})`}
                 </span>
                 <button
                   disabled={sourceIds.length === 0}
