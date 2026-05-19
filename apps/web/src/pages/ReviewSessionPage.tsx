@@ -62,9 +62,11 @@ export default function ReviewSessionPage() {
   const [results, setResults] = useState<Result[]>([]);
   const [mastered, setMastered] = useState<Set<string>>(new Set());
   const [logError, setLogError] = useState<string | null>(null);
+  const [masterError, setMasterError] = useState<string | null>(null);
   const loggedRef = useRef<Set<number>>(new Set());
 
   if (!config) return <Navigate to="/review" replace />;
+  const { fastMode, isWrongSetSession } = config;
   if (deck.length === 0) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -136,7 +138,7 @@ export default function ReviewSessionPage() {
     } else {
       // single / judge: pick is one label.
       setPicked([label]);
-      if (config!.fastMode) doReveal([label]);
+      if (fastMode) void doReveal([label]);
     }
   }
 
@@ -160,6 +162,8 @@ export default function ReviewSessionPage() {
     }
   }
 
+  // Retry is only shown while `logError` is set, before `next()` — so
+  // results[last] is always the current card's (un-logged) result.
   async function retryLog() {
     const last = results[results.length - 1];
     if (!last || loggedRef.current.has(idx)) return;
@@ -177,8 +181,9 @@ export default function ReviewSessionPage() {
     try {
       await masterWrong(q.id);
       setMastered((m) => new Set(m).add(q.id));
+      setMasterError(null);
     } catch {
-      setLogError("Couldn't mark mastered.");
+      setMasterError("Couldn't mark mastered — click to try again.");
     }
   }
 
@@ -270,14 +275,19 @@ export default function ReviewSessionPage() {
           </button>
         ) : (
           <>
-            {config.isWrongSetSession && (
-              <button
-                disabled={mastered.has(q.id)}
-                onClick={onMaster}
-                className="rounded-md border border-amber-500 bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-200 disabled:opacity-50"
-              >
-                {mastered.has(q.id) ? "Mastered ✓" : "Mark as mastered"}
-              </button>
+            {isWrongSetSession && (
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={mastered.has(q.id)}
+                  onClick={onMaster}
+                  className="rounded-md border border-amber-500 bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-200 disabled:opacity-50"
+                >
+                  {mastered.has(q.id) ? "Mastered ✓" : "Mark as mastered"}
+                </button>
+                {masterError && (
+                  <span className="text-xs text-red-700">{masterError}</span>
+                )}
+              </div>
             )}
             <button
               onClick={next}
