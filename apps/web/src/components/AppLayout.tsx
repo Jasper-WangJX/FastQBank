@@ -87,6 +87,9 @@ export default function AppLayout() {
             <NavLink to="/tags" className={navClass}>
               Tags
             </NavLink>
+            <NavLink to="/review" className={navClass}>
+              Review
+            </NavLink>
           </nav>
           <button
             onClick={onLogout}

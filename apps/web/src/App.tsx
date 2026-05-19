@@ -13,6 +13,8 @@ import RegisterPage from "./pages/RegisterPage";
 import TagManagerPage from "./pages/TagManagerPage";
 import QuestionListPage from "./pages/QuestionListPage";
 import QuestionFormPage from "./pages/QuestionFormPage";
+import ReviewEntryPage from "./pages/ReviewEntryPage";
+import ReviewSessionPage from "./pages/ReviewSessionPage";
 
 /** Inverse of RequireAuth: keep an already-logged-in user out of the
  *  login/register pages by bouncing them to the home page. */
@@ -61,6 +63,8 @@ function App() {
               path="/questions/:id/edit"
               element={<QuestionFormPage />}
             />
+            <Route path="/review" element={<ReviewEntryPage />} />
+            <Route path="/review/session" element={<ReviewSessionPage />} />
           </Route>
 
           {/* Unknown paths -> "/" -> (index) -> /questions. */}
