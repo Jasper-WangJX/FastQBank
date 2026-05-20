@@ -25,6 +25,7 @@ import { cropToPng, grabScreen } from "./capture";
 import { captureRegion } from "./overlay";
 import { registerShortcut, unregisterShortcut } from "./shortcut";
 import { IPC, registerIpc } from "./ipc";
+import { openGoogleAuthUrl, startLoopbackOnce } from "./oauth";
 
 const isDev = process.env.ELECTRON_DEV === "1";
 const DEV_SERVER_URL = "http://localhost:5173";
@@ -321,6 +322,30 @@ if (!gotLock) {
       onTrigger: captureAndRecognize,
       getSidecarState,
       getMainWindow: () => mainWindow,
+      onOauthOpenExternal: (url: string) => {
+        try {
+          openGoogleAuthUrl(url);
+        } catch (e) {
+          process.stderr.write(
+            `[oauth] refused to open url: ${e instanceof Error ? e.message : e}\n`,
+          );
+        }
+      },
+      onOauthStartLoopback: async () => {
+        const handle = await startLoopbackOnce();
+        // Forward the callback to the renderer as soon as it arrives;
+        // we don't keep a reference here.
+        void handle.awaitCallback
+          .then((payload) => {
+            mainWindow?.webContents.send(IPC.oauthCallback, payload);
+          })
+          .catch((e) => {
+            process.stderr.write(
+              `[oauth] loopback failed: ${e instanceof Error ? e.message : e}\n`,
+            );
+          });
+        return { port: handle.port };
+      },
     });
     void startSidecar();
     const acc = registerShortcut(captureAndRecognize);
