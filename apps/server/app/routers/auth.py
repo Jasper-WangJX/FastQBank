@@ -53,6 +53,7 @@ from app.schemas import (
     DeleteAccountIn,
     ForgotPasswordIn,
     GoogleCallbackIn,
+    GoogleProvidersOut,
     GoogleStartOut,
     LoginIn,
     ProvidersOut,
@@ -314,10 +315,52 @@ async def me(current_user: CurrentUser) -> UserOut:
 @router.get("/auth/providers", response_model=ProvidersOut)
 async def providers() -> ProvidersOut:
     settings = get_settings()
-    return ProvidersOut(google=bool(settings.google_client_id))
+    return ProvidersOut(
+        google=GoogleProvidersOut(
+            web=bool(
+                settings.google_web_client_id
+                and settings.google_web_client_secret
+            ),
+            desktop=bool(
+                settings.google_desktop_client_id
+                and settings.google_desktop_client_secret
+            ),
+        )
+    )
 
 
 # --- Google OAuth ----------------------------------------------------------
+
+
+def _credentials_for(
+    platform: Literal["web", "desktop"],
+) -> tuple[str, str] | None:
+    """Return (client_id, client_secret) for the given platform, or
+    None if that platform is not configured.
+
+    The web and desktop flows MUST use different Google OAuth clients
+    because Google enforces redirect-URI rules per client type
+    (Desktop = loopback only; Web = exact-match registration). The
+    router centralises the lookup here so each endpoint asks for
+    "the right credentials for this platform" without sprinkling
+    settings reads.
+    """
+    s = get_settings()
+    if platform == "web":
+        if s.google_web_client_id and s.google_web_client_secret:
+            return s.google_web_client_id, s.google_web_client_secret
+        return None
+    if platform == "desktop":
+        if (
+            s.google_desktop_client_id
+            and s.google_desktop_client_secret
+        ):
+            return (
+                s.google_desktop_client_id,
+                s.google_desktop_client_secret,
+            )
+        return None
+    return None  # defensive; the Literal already excludes other values
 
 
 _LOOPBACK_REDIRECT_PREFIXES = (
