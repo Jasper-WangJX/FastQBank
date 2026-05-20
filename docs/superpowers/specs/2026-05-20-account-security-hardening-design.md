@@ -54,14 +54,16 @@ Out of scope:
 ALTER TABLE users
   ADD COLUMN google_id TEXT,
   ADD CONSTRAINT uq_users_google_id UNIQUE (google_id),
-  ALTER COLUMN password_hash DROP NOT NULL;
+  ALTER COLUMN password_hash DROP NOT NULL,
+  ADD CONSTRAINT ck_users_auth_method
+    CHECK (password_hash IS NOT NULL OR google_id IS NOT NULL);
 ```
 
 - `google_id` stores Google's `sub` claim (a stable opaque id, not the
   email). Null means the user has no Google link yet.
 - `password_hash` becomes nullable so Google-only accounts can exist.
-- Application invariant (enforced in code, not by constraint): every
-  row has at least one of `password_hash` or `google_id` set.
+- `ck_users_auth_method` enforces the invariant in the DB: every row
+  must have at least one sign-in method (password hash or Google).
 - The existing `email` unique constraint is the anchor for the
   auto-merge logic.
 
@@ -119,7 +121,10 @@ All endpoints under `apps/server/app/routers/auth.py`.
 
 ### 4.1 `POST /auth/request-code`
 
-Request: `{ "email": EmailStr, "purpose": "register" }`
+Request: `{ "email": EmailStr, "purpose": Literal["register"] }` —
+`purpose` is a `Literal["register"]` field so the schema rejects
+anything else at validation time. Future flows (e.g. password reset)
+extend the literal.
 
 Behavior:
 1. If `purpose == "register"` and `email` is already a registered
