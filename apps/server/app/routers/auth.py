@@ -51,6 +51,7 @@ from app.oauth_google import (
 from app.ratelimit import limiter
 from app.schemas import (
     DeleteAccountIn,
+    ForgotPasswordIn,
     GoogleCallbackIn,
     GoogleStartOut,
     LoginIn,
@@ -58,6 +59,7 @@ from app.schemas import (
     RegisterIn,
     RequestCodeIn,
     ResetPasswordIn,
+    ResetPasswordPublicIn,
     TokenOut,
     UserOut,
 )
@@ -665,5 +667,158 @@ async def delete_account(
             )
         )
 
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Public forgot-password flow (Phase 11.2; unauthenticated) ------------
+
+
+@router.post(
+    "/auth/forgot-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+@limiter.limit("10/hour")
+async def forgot_password(
+    request: Request,
+    body: ForgotPasswordIn,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Send a 6-digit reset code to the email IF a password account
+    exists for it. Always returns 204 (regardless of whether the
+    email is registered or whether a code is actually sent) so the
+    response cannot be used to enumerate registered emails.
+    Google-only accounts are also silently ignored — they have no
+    password to reset.
+    """
+    now = datetime.now(tz=timezone.utc)
+
+    user = await db.scalar(
+        select(User).where(
+            User.email == body.email,
+            User.password_hash.is_not(None),
+        )
+    )
+    if user is None:
+        # No password account — silently 204 (anti-enumeration).
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    # 60s per-(email, purpose) cooldown: if a recent code exists,
+    # silently 204 so the existing code stays valid and we don't
+    # leak existence via a 429.
+    prior = await db.scalar(
+        select(EmailVerification).where(
+            EmailVerification.email == body.email,
+            EmailVerification.purpose == "reset",
+        )
+    )
+    if prior is not None:
+        elapsed = (now - prior.sent_at).total_seconds()
+        if elapsed < CODE_RESEND_SECONDS:
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+        await db.execute(
+            delete(EmailVerification).where(
+                EmailVerification.email == body.email,
+                EmailVerification.purpose == "reset",
+            )
+        )
+
+    code = _new_code()
+    row = EmailVerification(
+        email=body.email,
+        code_hash=hash_password(code),
+        expires_at=now + timedelta(minutes=CODE_TTL_MINUTES),
+        attempts=0,
+        sent_at=now,
+        purpose="reset",
+    )
+    db.add(row)
+    await db.flush()
+
+    try:
+        await send_verification(body.email, code)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="mail delivery failed",
+        ) from e
+
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/auth/reset-password-public",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+async def reset_password_public(
+    body: ResetPasswordPublicIn,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Complete a forgot-password flow without a token. Folds "no
+    such password account" and "no pending code" into the same
+    `400 invalid code` as a wrong-code attempt, so an attacker
+    cannot enumerate registered emails through differing errors."""
+    if body.new_password != body.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="passwords do not match",
+        )
+
+    now = datetime.now(tz=timezone.utc)
+
+    user = await db.scalar(
+        select(User).where(
+            User.email == body.email,
+            User.password_hash.is_not(None),
+        )
+    )
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid code",
+        )
+
+    row = await db.scalar(
+        select(EmailVerification).where(
+            EmailVerification.email == body.email,
+            EmailVerification.purpose == "reset",
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid code",
+        )
+    if row.expires_at < now:
+        await db.delete(row)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="code expired",
+        )
+    if row.attempts >= CODE_MAX_ATTEMPTS:
+        await db.delete(row)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="too many attempts",
+        )
+    if not verify_password(body.code, row.code_hash):
+        row.attempts += 1
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid code",
+        )
+
+    # Code is good — consume it and update the password. No JWT is
+    # issued; the user signs in manually on /login (UX choice per
+    # spec §3 / §4.3 banner).
+    await db.delete(row)
+    user.password_hash = hash_password(body.new_password)
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
