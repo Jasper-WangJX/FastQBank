@@ -44,7 +44,8 @@ Pillow~=11.0
 python-multipart~=0.0.20
 
 # --- Phase 11: Google sign-in (new) ---
-# Verifies Google id_tokens locally (signature + audience + issuer);
-# transitively pulls cryptography + requests, both already common deps.
-google-auth~=2.34
-requests~=2.32
+# Verifies Google id_tokens locally (signature + audience + issuer).
+# The [requests] extra pulls in `requests` for the HTTP transport
+# used by google.auth.transport.requests; cryptography comes in as a
+# direct google-auth dep.
+google-auth[requests]~=2.34
