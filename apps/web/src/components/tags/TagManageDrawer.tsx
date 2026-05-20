@@ -37,14 +37,20 @@ export default function TagManageDrawer({
   const [renameValue, setRenameValue] = useState("");
   const [newName, setNewName] = useState("");
 
-  // Reset transient state when re-opening.
+  // Reset transient state when re-opening. The eslint rule flags
+  // setState-in-effect as a cascading-render smell, but this is the
+  // canonical pattern for "clear local form state when the drawer
+  // becomes visible" — the alternative (a `key` on the parent) would
+  // force the drawer to unmount/remount unnecessarily.
   useEffect(() => {
     if (open) {
+      /* eslint-disable react-hooks/set-state-in-effect */
       setQ("");
       setRenamingId(null);
       setRenameValue("");
       setNewName("");
       setError(null);
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [open]);
 
