@@ -15,7 +15,7 @@ foreign / missing ids.
 
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
@@ -25,6 +25,7 @@ from app.db import get_db
 from app.deps import CurrentUser
 from app.models import Question, QuestionTag, Share, Tag
 from app.question_query import tags_by_question
+from app.ratelimit import limiter
 from app.schemas import (
     MyShareListOut,
     MyShareRow,
@@ -185,12 +186,17 @@ async def _get_active_share_by_token(
 
 
 @router.get("/shares/{token}", response_model=SharePreviewOut)
+@limiter.limit("60/minute")
 async def get_share(
+    request: Request,
     token: str,
     db: AsyncSession = Depends(get_db),
 ) -> SharePreviewOut:
     """Public — no auth. Returns payload + created_at only. Creator
-    identity is intentionally not exposed (spec §2.2)."""
+    identity is intentionally not exposed (spec §2.2). Rate-limited
+    (slowapi) per IP — spec §7 calls out anonymous-flood as the main
+    DoS surface; 60/min is generous for legitimate single-user
+    sharing and tight for scripted floods."""
     share = await _get_active_share_by_token(db, token)
     return SharePreviewOut(
         payload=SharePayload.model_validate(share.payload),
