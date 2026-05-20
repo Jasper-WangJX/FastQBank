@@ -490,3 +490,27 @@ class DeleteAccountIn(BaseModel):
     wrong account in a stale tab."""
 
     confirm_email: EmailStr
+
+
+# ---------------------------------------------------------------------------
+# Phase 11.2 — Public forgot-password flow
+# ---------------------------------------------------------------------------
+
+
+class ForgotPasswordIn(BaseModel):
+    """Body for POST /auth/forgot-password (public). The endpoint
+    always responds 204, even if no password account exists for the
+    email — preventing email-enumeration probes."""
+
+    email: EmailStr
+
+
+class ResetPasswordPublicIn(BaseModel):
+    """Body for POST /auth/reset-password-public. The public sibling
+    of ResetPasswordIn — also carries `email` since the caller has
+    no JWT to identify themselves."""
+
+    email: EmailStr
+    code: str = Field(pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=8, max_length=72)
+    confirm_password: str = Field(min_length=8, max_length=72)
