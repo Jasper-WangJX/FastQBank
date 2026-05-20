@@ -269,8 +269,17 @@ async def login(
 
 
 @router.get("/me", response_model=UserOut)
-async def me(current_user: CurrentUser) -> User:
-    return current_user
+async def me(current_user: CurrentUser) -> UserOut:
+    """`has_password` lets the frontend gate the reset-password UI
+    (Settings modal). We compute it here because it's not an actual
+    ORM attribute — UserOut otherwise builds straight from the User
+    via `from_attributes=True`."""
+    return UserOut(
+        id=current_user.id,
+        email=current_user.email,
+        created_at=current_user.created_at,
+        has_password=current_user.password_hash is not None,
+    )
 
 
 @router.get("/auth/providers", response_model=ProvidersOut)
