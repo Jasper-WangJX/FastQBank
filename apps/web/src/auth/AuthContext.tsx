@@ -16,7 +16,7 @@ import {
 } from "../lib/api";
 
 interface Providers {
-  google: boolean;
+  google: { web: boolean; desktop: boolean };
 }
 
 interface CurrentUser {
@@ -82,7 +82,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setProviders(p);
       })
       .catch(() => {
-        if (!cancelled) setProviders({ google: false });
+        // Network/CORS error: hide the optional button rather than
+        // render a broken control.
+        if (!cancelled)
+          setProviders({ google: { web: false, desktop: false } });
       });
     return () => {
       cancelled = true;
