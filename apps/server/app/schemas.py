@@ -321,3 +321,98 @@ class TagQuestionIdsOut(BaseModel):
     the picker's per-source "Select all" without paging."""
 
     question_ids: list[UUID]
+
+
+# ---------------------------------------------------------------------------
+# Stage 9 — Share-link cross-account transfer + bulk operations
+# ---------------------------------------------------------------------------
+
+
+class ShareCreateIn(BaseModel):
+    """Body for POST /shares. 1..99 owned question ids. The server
+    snapshots the questions at creation time; the resulting share is
+    immutable (no edit endpoint)."""
+
+    question_ids: list[UUID] = Field(min_length=1, max_length=99)
+
+
+class ShareCreateOut(BaseModel):
+    """Response of POST /shares. The full URL is built server-side from
+    the frontend base + the new token, so the client just copies it."""
+
+    token: str
+    share_url: str
+
+
+class SharedQuestion(BaseModel):
+    """One question inside a share payload. `source_id` is the creator's
+    `question.id`; the importer's row gets a fresh `id` and stores this
+    value in `imported_from_id` for UUID-based dedup."""
+
+    source_id: UUID
+    stem: str
+    type: QuestionType
+    options: list[OptionOut]
+    correct: list[str]
+    knowledge_summary: str | None = None
+    source: Literal["manual", "ocr", "ai"]
+    tag_names: list[str] = []
+
+
+class SharePayload(BaseModel):
+    """Top-level shape of the JSONB payload column. `version` is here so
+    a future shape change can be detected without a column rename."""
+
+    version: Literal[1] = 1
+    questions: list[SharedQuestion]
+
+
+class SharePreviewOut(BaseModel):
+    """Response of GET /shares/{token}. Creator identity is NOT exposed
+    — by design (spec §2.2 'no access logging / anonymous-ish')."""
+
+    payload: SharePayload
+    created_at: datetime
+
+
+class ShareImportOut(BaseModel):
+    """Response of POST /shares/{token}/import. Counters drive the
+    success toast."""
+
+    imported: int
+    skipped: int
+    tags_created: int
+    tags_reused: int
+
+
+class MyShareRow(BaseModel):
+    """One entry in the GET /shares/me list. `question_count` is
+    derived from `len(payload.questions)` server-side — the modal shows
+    it so the user can identify which share is which."""
+
+    id: UUID
+    token: str
+    question_count: int
+    created_at: datetime
+
+
+class MyShareListOut(BaseModel):
+    items: list[MyShareRow]
+
+
+class BulkAddTagsIn(BaseModel):
+    """Body for POST /questions/bulk-tags. Adds the given tag ids to
+    every listed question, idempotently. Existing other tags on each
+    question are untouched. Foreign / unknown / soft-deleted ids are
+    silently skipped (matches the rest of the codebase's tolerance for
+    stale client state)."""
+
+    question_ids: list[UUID] = Field(min_length=1)
+    tag_ids: list[UUID] = Field(min_length=1)
+
+
+class BulkAddTagsOut(BaseModel):
+    """Response counters drive the success toast."""
+
+    questions_updated: int
+    links_added: int

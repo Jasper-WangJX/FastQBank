@@ -30,7 +30,7 @@
 | 7 Flashcards 复习 + 错题集 | ✅ 已完成 (2026-05-18) | 题目选择器 → 卡片式过题 → 持久错题集；含 7.1 标签/卡片视图 UX |
 | 8 AI 出题 | ✅ 已完成 (2026-05-19) | 复习入口选种子 → 混合/仅AI过题 → 卡上"加入题库"（带tag+分析） |
 | 8.5 标签扁平化 + 跨页搜索 | ✅ 已完成 (2026-05-19) | tags 取消层级、CRUD 走抽屉、列表/复习/录题三页统一的"搜索 + AND/OR"过滤；为阶段 9 按 name 携带 tag 做准备 |
-| 9 批量操作 + 链接分享 / 导入 | ⬜ 待办 | 题库页多选 → 批量删除/统一加tag/打包成链接；粘贴链接导入题目（按 UUID 跳重） |
+| 9 批量操作 + 链接分享 / 导入 | ✅ 已完成 (2026-05-19) | 题库页多选 → 批量删除/统一加tag/打包成链接；粘贴链接导入题目（按 UUID 跳重） |
 | 10 打磨 + Windows 安装包 | ⬜ 待办 | electron-builder 打包、产品化收尾 |
 
 
@@ -251,8 +251,26 @@
 
 ## 阶段 9 — 批量操作 + 链接分享 / 导入
 
-> 设计文档：`docs/superpowers/specs/2026-05-19-phase9-share-link-bulk-ops-design.md`。
-> **范围变更**：原计划的"本地 JSON 导入导出"在 v1 中不做；跨账号传题改由服务端 share-token 短链承载。dedup 仍按 UUID。
+> **状态：✅ 已完成 (2026-05-19)。** 走 brainstorming → spec → 计划 →
+> subagent 驱动执行（逐任务实现 + spec/质量两阶段评审 + 最终全分支评审）。
+> `scripts/verify_phase9.py` ALL PASS（覆盖创建/取/导入/UUID dedup 四种场景
+> /My-shares/revoke/IDOR/bulk-tags 全部 negative branch）+ 前端
+> `tsc`/`lint`/`vitest`(46)/`build` 全绿 + 双账号 GUI 走查（创建 → 全选过滤后
+> 7 道 → 打包 → 跨账号粘贴导入 → My shares 撤销 → 重新导入 410 → 批量删除/统一
+> 加 tag 跨账号互不影响）通过。规格
+> `docs/superpowers/specs/2026-05-19-phase9-share-link-bulk-ops-design.md`，计划
+> `docs/superpowers/plans/2026-05-19-phase9-share-link-bulk-ops.md`。
+
+#### 实际实现说明（与原计划的差异）
+- **share token 生成**：`secrets.token_urlsafe(9)` 直出 12 字符 URL-safe (~72 bits)，未引入 nanoid 依赖；`is_valid_share_token` 让路由在查 DB 前快速 404 掉明显非法 token
+- **`/shares/me` vs `/shares/{token}` 路由顺序坑（已修）**：FastAPI 按声明顺序匹配，静态 `/shares/me` 必须声明在参数化 `/shares/{token}` 之前——否则 `me` 会被当 token 走到 `_get_active_share_by_token` 然后 404。加了显式注释防止未来再踩
+- **三处 race-safe 写法**：(a) token 冲突重试 5 次 + 收窄到 `IntegrityError`；(b) 同用户并发 import 的 tag find-or-create 用 `pg_insert(...).on_conflict_do_nothing()` + re-SELECT；(c) bulk-tags 用 composite-PK `ON CONFLICT DO NOTHING` + `RETURNING` 拿到真实插入数
+- **`/review/tag-question-ids` 加 `q` 关键字过滤**：原本只读 tag，但题库页 banner "Select all N matching" 的 N 包含关键字过滤——审查阶段发现这个不一致会让用户错选远超预期的题，已扩展端点 + 客户端 wrapper + 调用方贯通 keyword
+- **匿名 GET 限流**：`/shares/{token}` 是全应用唯一无鉴权端点，按 spec §7 加了 `@limiter.limit("60/minute")` 每 IP 限流
+- **`SharePreviewOut` 不暴露 creator 身份**：只返回 payload + created_at，与"不记录访问"基调一致
+- **schema 变更最小**：新表 `shares` + `questions.imported_from_id`（无 FK，写一次再不动），合并到单个迁移 `0005_shares_and_imported_from`
+- **未做的（设计有意延后到 v2）**：`/s/<token>` 浏览器深链路由（点链接自动开 Import Modal）；同用户并发 import 的题目去重（仅 Modal busy state 缓解）；share 过期 / 访问统计 / 密码保护
+- **分支**：`phase-9-share-link`，22 个 commits（含 3 个 review-driven fix commit），合入 `main` 后退役
 
 ### 任务
 - 题库页加多选：每行/每卡左侧加纯图标 checkbox；表头三态主 checkbox（当前页全选）；当前页全选时显示"全选过滤后 N 题"扩展链接；选中状态跨页 / 跨 filter 保留、刷新清空

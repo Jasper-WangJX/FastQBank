@@ -17,6 +17,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -30,6 +31,8 @@ from app.question_query import (
     to_question_out,
 )
 from app.schemas import (
+    BulkAddTagsIn,
+    BulkAddTagsOut,
     QuestionIn,
     QuestionListOut,
     QuestionOut,
@@ -203,3 +206,70 @@ async def delete_question(
     question = await get_owned_question(db, user.id, question_id)
     question.deleted_at = func.now()
     await db.commit()
+
+
+@router.post("/questions/bulk-tags", response_model=BulkAddTagsOut)
+async def bulk_add_tags(
+    body: BulkAddTagsIn,
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> BulkAddTagsOut:
+    """Append tag links to many questions atomically.
+
+    Existing tags on each question are untouched (union, never replace).
+    Foreign / unknown / soft-deleted question_ids and tag_ids are
+    silently skipped (matches the tolerance for stale client state in
+    POST /review/deck). Idempotent via PG ON CONFLICT DO NOTHING on the
+    question_tags composite PK.
+    """
+    # Validate ownership/liveness; drop unknown ids (don't error so a
+    # racing delete-in-another-tab doesn't 500 the whole bulk op).
+    live_qs = list(
+        (
+            await db.scalars(
+                select(Question.id).where(
+                    Question.id.in_(body.question_ids),
+                    Question.user_id == user.id,
+                    Question.deleted_at.is_(None),
+                )
+            )
+        ).all()
+    )
+    live_tags = list(
+        (
+            await db.scalars(
+                select(Tag.id).where(
+                    Tag.id.in_(body.tag_ids),
+                    Tag.user_id == user.id,
+                    Tag.deleted_at.is_(None),
+                )
+            )
+        ).all()
+    )
+    if not live_qs or not live_tags:
+        return BulkAddTagsOut(questions_updated=0, links_added=0)
+
+    rows = [
+        {"question_id": qid, "tag_id": tid}
+        for qid in live_qs
+        for tid in live_tags
+    ]
+    # ON CONFLICT DO NOTHING on the (question_id, tag_id) composite PK
+    # makes this a true "append, idempotent" operation. `returning(*PK)`
+    # gives us the rows that were actually inserted so we can count.
+    stmt = (
+        pg_insert(QuestionTag)
+        .values(rows)
+        .on_conflict_do_nothing(
+            index_elements=["question_id", "tag_id"],
+        )
+        .returning(QuestionTag.question_id, QuestionTag.tag_id)
+    )
+    inserted = (await db.execute(stmt)).all()
+    await db.commit()
+
+    questions_touched = {qid for qid, _ in inserted}
+    return BulkAddTagsOut(
+        questions_updated=len(questions_touched),
+        links_added=len(inserted),
+    )

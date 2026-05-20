@@ -112,6 +112,13 @@ class Question(Base):
     created_at: Mapped[datetime] = _now_column()
     updated_at: Mapped[datetime] = _now_column()
     deleted_at: Mapped[datetime | None] = _now_column(nullable=True)
+    # Stage 9: written once at import time, never updated. Refers to the
+    # creator's question.id from the source share's payload — no FK, the
+    # creator may have deleted that row by now. NULL on rows the user
+    # entered directly (manual / OCR / AI).
+    imported_from_id: Mapped[PyUUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
 
     __table_args__ = (
         CheckConstraint(
@@ -241,5 +248,42 @@ class WrongQuestion(Base):
             "ix_wrong_questions_user_active",
             "user_id",
             postgresql_where=text("cleared_at IS NULL"),
+        ),
+    )
+
+
+class Share(Base):
+    """Cross-account share-link snapshot (stage 9).
+
+    `payload` is a self-contained JSONB snapshot of the selected
+    questions (stem / type / options / correct / source / knowledge
+    summary / tag NAMES). Editing or deleting the source question after
+    creation does NOT propagate — links capture a value, not a
+    reference. `deleted_at` is a soft-delete revoke: GET / import on a
+    revoked token returns 410.
+    """
+
+    __tablename__ = "shares"
+
+    id: Mapped[PyUUID] = _uuid_pk()
+    creator_id: Mapped[PyUUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token: Mapped[str] = mapped_column(
+        Text, nullable=False, unique=True
+    )
+    # Self-contained snapshot. Versioned via payload["version"] for
+    # forward compat without a column rename.
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = _now_column()
+    deleted_at: Mapped[datetime | None] = _now_column(nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_shares_creator_active",
+            "creator_id",
+            postgresql_where=text("deleted_at IS NULL"),
         ),
     )

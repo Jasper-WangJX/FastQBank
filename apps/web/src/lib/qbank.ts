@@ -129,3 +129,93 @@ export function updateQuestion(
 export async function deleteQuestion(id: string): Promise<void> {
   await apiFetch(`/questions/${id}`, { method: "DELETE" });
 }
+
+// --- Stage 9 — Share-link cross-account transfer + bulk operations ---
+
+export interface SharedQuestion {
+  source_id: string;
+  stem: string;
+  type: QuestionType;
+  options: Option[];
+  correct: string[];
+  knowledge_summary: string | null;
+  source: "manual" | "ocr" | "ai";
+  tag_names: string[];
+}
+
+export interface SharePayload {
+  version: 1;
+  questions: SharedQuestion[];
+}
+
+export interface ShareCreateOut {
+  token: string;
+  share_url: string;
+}
+
+export interface SharePreviewOut {
+  payload: SharePayload;
+  created_at: string;
+}
+
+export interface ShareImportOut {
+  imported: number;
+  skipped: number;
+  tags_created: number;
+  tags_reused: number;
+}
+
+export interface MyShareRow {
+  id: string;
+  token: string;
+  question_count: number;
+  created_at: string;
+}
+
+export interface MyShareListOut {
+  items: MyShareRow[];
+}
+
+export function createShare(
+  questionIds: string[],
+): Promise<ShareCreateOut> {
+  return apiFetch<ShareCreateOut>("/shares", {
+    method: "POST",
+    body: { question_ids: questionIds },
+  });
+}
+
+export function getSharePreview(token: string): Promise<SharePreviewOut> {
+  return apiFetch<SharePreviewOut>(`/shares/${token}`);
+}
+
+export function importShare(token: string): Promise<ShareImportOut> {
+  return apiFetch<ShareImportOut>(`/shares/${token}/import`, {
+    method: "POST",
+  });
+}
+
+export function listMyShares(): Promise<MyShareListOut> {
+  return apiFetch<MyShareListOut>("/shares/me");
+}
+
+export async function revokeShare(id: string): Promise<void> {
+  await apiFetch(`/shares/${id}`, { method: "DELETE" });
+}
+
+// --- Bulk operations ---
+
+export interface BulkAddTagsOut {
+  questions_updated: number;
+  links_added: number;
+}
+
+export function bulkAddTags(
+  questionIds: string[],
+  tagIds: string[],
+): Promise<BulkAddTagsOut> {
+  return apiFetch<BulkAddTagsOut>("/questions/bulk-tags", {
+    method: "POST",
+    body: { question_ids: questionIds, tag_ids: tagIds },
+  });
+}
