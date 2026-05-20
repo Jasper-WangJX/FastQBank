@@ -10,6 +10,7 @@ import { RequireAuth } from "./auth/RequireAuth";
 import AppLayout from "./components/AppLayout";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
+import OAuthCallbackPage from "./pages/OAuthCallbackPage";
 import QuestionListPage from "./pages/QuestionListPage";
 import QuestionFormPage from "./pages/QuestionFormPage";
 import ReviewEntryPage from "./pages/ReviewEntryPage";
@@ -43,6 +44,7 @@ function App() {
               </PublicOnly>
             }
           />
+          <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
 
           {/* Authenticated area: one guarded shell, child routes render
               into AppLayout's <Outlet/>. */}
