@@ -35,6 +35,7 @@
 | 11 账号安全加固 | ✅ 已完成 (2026-05-20) | 邮箱验证码注册（Resend，免配置时降级为控制台）、密码二次确认、Google 一键登录（Web + Desktop 桌面端走 127.0.0.1 一次性 loopback 服务器） |
 | 11.1 帐号独立 + 设置面板 + 注销 | ✅ 已完成 (2026-05-20) | 同邮箱 Google + 密码账号成为两行独立账户；齿轮按钮替换帮助按钮，打开设置面板可重设密码（仅密码账号）或注销账号；密码账号注销后该邮箱 24h 内禁止密码重新注册 |
 | 11.2 忘记密码 (公开重设) | ✅ 已完成 (2026-05-20) | LoginPage 加 "Reset it" 链接到新页面 `/forgot-password`，输入邮箱 → 收码 → 设新密码 → 跳回 `/login` 用新密码登入；反枚举：邮箱不存在也 204，错码与"无账号"同一报错 |
+| 11.3 Google 双 client (web+desktop) | ✅ 已完成 (2026-05-20) | 拆开 Google OAuth 凭据：`GOOGLE_WEB_CLIENT_ID/SECRET` 给 https 网页流，`GOOGLE_DESKTOP_CLIENT_ID/SECRET` 给 Electron loopback 流；`/auth/providers` 返回 `{google:{web,desktop}}`，前端按当前平台决定是否显示按钮 |
 
 
 ---
@@ -342,6 +343,21 @@
 - 后端：新增两个不需要 JWT 的端点 `POST /auth/forgot-password`（按邮箱发 6 位重设码；无密码账号则静默 204）与 `POST /auth/reset-password-public`（邮箱 + 码 + 新密码 + 确认 → 改 `password_hash`）。两者都共用 Phase 11.1 的 `EmailVerification(purpose='reset')`。
 - 反邮箱枚举：请求端点对任何邮箱都 204；完成端点把"无账号"与"无 pending code"统一报 `400 invalid code`，与错码完全一致。
 - 前端：`/forgot-password` 新页面（两步状态机克隆自 RegisterPage）；LoginPage 加 "Reset it" 链接；重设成功后跳 `/login` 带绿色 `[ AUTH ] · Password updated` 提示条。
+
+---
+
+## 阶段 11.3 — Google 双 client (web + desktop)
+
+> **状态：✅ 已完成 (2026-05-20)。** 设计：`docs/superpowers/specs/2026-05-20-google-dual-client-design.md`。计划：`docs/superpowers/plans/2026-05-20-google-dual-client.md`。
+
+### 背景
+Phase 11 假设一个 Google OAuth 客户端可以同时服务网页流和桌面 loopback 流；事实上 Google 按 client type 严格区分 redirect URI 规则（Desktop 只接受 loopback、Web 必须精确注册），所以两个流必须用两个独立的 OAuth client。
+
+### 主要改动
+- DB 迁移 0008：`oauth_states` 加 `platform` 列（`'web'`/`'desktop'`，CHECK 约束）；`/auth/google/callback` 由此知道当时应该用哪一对凭据做 token exchange。
+- 后端：settings 把 `GOOGLE_CLIENT_ID/SECRET` 拆成 `GOOGLE_WEB_CLIENT_ID/SECRET` + `GOOGLE_DESKTOP_CLIENT_ID/SECRET`；新增 `_credentials_for(platform)` helper；`/auth/providers` 返回结构变为 `{google: {web: bool, desktop: bool}}`；`/auth/google/start` 写入 platform、`/auth/google/callback` 读出 platform。
+- 前端：`AuthContext.providers` 改成嵌套结构；`GoogleSignInButton` 按当前平台（`getDesktop()` 判断）只在对应 flag 为 true 时渲染。
+- 操作要求：`.env` / `.env.prod` 把旧的 `GOOGLE_CLIENT_ID/SECRET` 改名为 `GOOGLE_WEB_CLIENT_ID/SECRET`；如果想启用桌面端 Google 登录，再去 Google Console 建一个 Desktop 类型的 OAuth client，填到 `GOOGLE_DESKTOP_CLIENT_ID/SECRET`。
 
 ---
 

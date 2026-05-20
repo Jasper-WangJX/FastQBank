@@ -34,6 +34,7 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 | 11 Account security hardening | ✅ Done (2026-05-20) | Email verification on signup (Resend, console stub when unset), confirm-password input, Google sign-in on web + Electron desktop (loopback http server on 127.0.0.1) |
 | 11.1 Account independence + Settings modal + Cancellation | ✅ Done (2026-05-20) | Same-email Google + password accounts become two independent rows; gear icon replaces Help and opens a Settings modal with reset password (password accounts only) and delete account; deleting a password account blocks re-registration of the same email for 24 hours |
 | 11.2 Forgot password (public reset) | ✅ Done (2026-05-20) | LoginPage gains a "Reset it" link to a new `/forgot-password` page where the user enters their email → gets a code → sets a new password → bounced to `/login` with a green banner; enumeration-resistant (silent 204 for unknown emails; "invalid code" lumps wrong-code and no-account) |
+| 11.3 Google dual-client (web + desktop) | ✅ Done (2026-05-20) | Split the Google OAuth credentials: `GOOGLE_WEB_CLIENT_ID/SECRET` for the https web flow, `GOOGLE_DESKTOP_CLIENT_ID/SECRET` for the Electron loopback flow. `/auth/providers` now returns `{google:{web,desktop}}`; the frontend gates the button on the flag matching the current platform. |
 
 ---
 
@@ -372,6 +373,21 @@ Password confirm-field reports a mismatch on blur; the same email cannot request
 - Backend: two new unauthenticated endpoints. `POST /auth/forgot-password` mails a 6-digit reset code to the supplied email if a password account exists; silently 204 otherwise. `POST /auth/reset-password-public` consumes the code and updates `password_hash`. Both reuse Phase 11.1's `EmailVerification(purpose='reset')` pipeline.
 - Anti-enumeration: the request endpoint always returns 204; the completion endpoint folds "no such account" and "no pending code" into the same `400 invalid code` as a wrong-code attempt.
 - Frontend: new `/forgot-password` page (two-step state machine cloned from RegisterPage); LoginPage gains the "Reset it" link and a green `[ AUTH ] · Password updated` banner driven by `location.state` after a successful reset.
+
+---
+
+## Phase 11.3 — Google dual-client (web + desktop)
+
+> **Status: ✅ Done (2026-05-20).** Design: `docs/superpowers/specs/2026-05-20-google-dual-client-design.md`. Plan: `docs/superpowers/plans/2026-05-20-google-dual-client.md`.
+
+### Background
+Phase 11 assumed a single Google OAuth client could serve both the web flow and the Electron loopback flow. Google's client-type rules disallow that: a Desktop client accepts only loopback redirect URIs, while a Web client requires exact-match registration of every redirect URI. The two flows therefore require two separate OAuth clients.
+
+### Key changes
+- DB migration 0008 adds an `oauth_states.platform` text column (`'web'`/`'desktop'`, CHECK constraint) so `/auth/google/callback` can resolve the correct client_id/secret pair when the user returns.
+- Backend: settings split `GOOGLE_CLIENT_ID/SECRET` into `GOOGLE_WEB_CLIENT_ID/SECRET` + `GOOGLE_DESKTOP_CLIENT_ID/SECRET`; new `_credentials_for(platform)` helper; `/auth/providers` response reshaped to `{google: {web: bool, desktop: bool}}`; `/auth/google/start` writes `platform` and `/auth/google/callback` reads it back.
+- Frontend: `AuthContext.providers` adopts the nested shape; `GoogleSignInButton` renders only when the flag matching the current platform (`getDesktop()` branch) is true.
+- Operator action: rename the existing `GOOGLE_CLIENT_ID/SECRET` in `.env` / `.env.prod` to `GOOGLE_WEB_CLIENT_ID/SECRET`. To enable desktop Google sign-in, create a new Desktop OAuth client in Google Cloud Console and fill `GOOGLE_DESKTOP_CLIENT_ID/SECRET`.
 
 ---
 
