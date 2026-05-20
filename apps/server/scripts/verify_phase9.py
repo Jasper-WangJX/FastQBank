@@ -208,6 +208,25 @@ async def main() -> None:
         }
         assert {"math", "physics", "only-a"}.issubset(all_b_tag_names)
 
+        # --- 3a. Import with one tag already present (reuse path) ---
+        # User C pre-creates a `math` tag, then imports A's share —
+        # expect tags_reused == 1 (math), tags_created == 2 (physics,
+        # only-a). Confirms the reuse branch of import_share.
+        _, hc = await _register(c)
+        await c.post("/tags", json={"name": "math"}, headers=hc)
+        r = await c.post(f"/shares/{token}/import", headers=hc)
+        assert r.status_code == 200, r.text
+        imp_c = r.json()
+        assert imp_c["imported"] == 3, imp_c
+        assert imp_c["skipped"] == 0, imp_c
+        assert imp_c["tags_created"] == 2, imp_c
+        assert imp_c["tags_reused"] == 1, imp_c
+        # C has the 3 imported questions + the existing `math` tag is reused
+        c_list = (
+            await c.get("/questions?limit=100", headers=hc)
+        ).json()
+        assert c_list["total"] == 3, c_list
+
         # --- 4. UUID dedup ---
         # 4a. Re-import under B: all skipped
         r = await c.post(f"/shares/{token}/import", headers=hb)
@@ -328,6 +347,63 @@ async def main() -> None:
         bulk3 = r.json()
         assert bulk3["questions_updated"] == 0, bulk3
         assert bulk3["links_added"] == 0, bulk3
+
+        # 6c. Foreign tag_id silently dropped
+        # B owns its own tags; A uses B's existing tag id -> dropped.
+        b_tag = (
+            await c.post("/tags", json={"name": "b-tag"}, headers=hb)
+        ).json()
+        r = await c.post(
+            "/questions/bulk-tags",
+            json={
+                "question_ids": [q1["id"]],  # A's question
+                "tag_ids": [b_tag["id"]],     # B's tag
+            },
+            headers=ha,
+        )
+        bulk4 = r.json()
+        assert bulk4["questions_updated"] == 0, bulk4
+        assert bulk4["links_added"] == 0, bulk4
+
+        # 6d. Soft-deleted question_id + soft-deleted tag_id silently dropped
+        # Make a temp question + temp tag on A, soft-delete both, then
+        # try bulk-tags with their ids -> both filtered out.
+        q_soft = (
+            await c.post("/questions", json=_qbody("QSOFT", []), headers=ha)
+        ).json()
+        t_soft = (
+            await c.post("/tags", json={"name": "soft"}, headers=ha)
+        ).json()
+        assert (
+            await c.delete(f"/questions/{q_soft['id']}", headers=ha)
+        ).status_code == 204
+        assert (
+            await c.delete(f"/tags/{t_soft['id']}", headers=ha)
+        ).status_code == 204
+        # Soft-deleted question + valid tag -> dropped
+        r = await c.post(
+            "/questions/bulk-tags",
+            json={
+                "question_ids": [q_soft["id"]],
+                "tag_ids": [tag_math["id"]],
+            },
+            headers=ha,
+        )
+        bulk5 = r.json()
+        assert bulk5["questions_updated"] == 0, bulk5
+        assert bulk5["links_added"] == 0, bulk5
+        # Valid question + soft-deleted tag -> dropped
+        r = await c.post(
+            "/questions/bulk-tags",
+            json={
+                "question_ids": [q1["id"]],
+                "tag_ids": [t_soft["id"]],
+            },
+            headers=ha,
+        )
+        bulk6 = r.json()
+        assert bulk6["questions_updated"] == 0, bulk6
+        assert bulk6["links_added"] == 0, bulk6
 
         print("ALL PASS — verify_phase9")
 
