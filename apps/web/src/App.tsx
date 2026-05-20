@@ -12,6 +12,7 @@ import AppLayout from "./components/AppLayout";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import OAuthCallbackPage from "./pages/OAuthCallbackPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import QuestionListPage from "./pages/QuestionListPage";
 import QuestionFormPage from "./pages/QuestionFormPage";
 import ReviewEntryPage from "./pages/ReviewEntryPage";
@@ -69,6 +70,7 @@ function App() {
             }
           />
           <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route
             element={
               <RequireAuth>
