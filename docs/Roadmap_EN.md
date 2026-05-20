@@ -33,6 +33,7 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 | 10 Polish + Windows installer | ⬜ Todo | electron-builder packaging, productization |
 | 11 Account security hardening | ✅ Done (2026-05-20) | Email verification on signup (Resend, console stub when unset), confirm-password input, Google sign-in on web + Electron desktop (loopback http server on 127.0.0.1) |
 | 11.1 Account independence + Settings modal + Cancellation | ✅ Done (2026-05-20) | Same-email Google + password accounts become two independent rows; gear icon replaces Help and opens a Settings modal with reset password (password accounts only) and delete account; deleting a password account blocks re-registration of the same email for 24 hours |
+| 11.2 Forgot password (public reset) | ✅ Done (2026-05-20) | LoginPage gains a "Reset it" link to a new `/forgot-password` page where the user enters their email → gets a code → sets a new password → bounced to `/login` with a green banner; enumeration-resistant (silent 204 for unknown emails; "invalid code" lumps wrong-code and no-account) |
 
 ---
 
@@ -360,6 +361,17 @@ Password confirm-field reports a mismatch on blur; the same email cannot request
 - DB migration 0007 replaces the global `UNIQUE(email)` with two partial unique indexes (one for password rows, one for Google rows) and adds a `deleted_users (email, deleted_at)` table.
 - Backend: `/auth/google/callback` looks up users by Google `sub` (no email-merge); `/auth/request-code` and `/auth/register` narrow their "already registered" check to `password_hash IS NOT NULL`; three new authed endpoints added (`/auth/request-password-reset-code`, `/auth/reset-password`, `/auth/delete-account`); `/me` exposes `has_password`.
 - Frontend: `AuthContext` caches `/me` as `currentUser`; `AppLayout` swaps the placeholder Help icon for a Settings gear that opens a `SettingsModal` with Reset password (password accounts only) and Delete account sections.
+
+---
+
+## Phase 11.2 — Forgot password (public reset)
+
+> **Status: ✅ Done (2026-05-20).** Design: `docs/superpowers/specs/2026-05-20-forgot-password-design.md`. Plan: `docs/superpowers/plans/2026-05-20-forgot-password.md`.
+
+### Key changes
+- Backend: two new unauthenticated endpoints. `POST /auth/forgot-password` mails a 6-digit reset code to the supplied email if a password account exists; silently 204 otherwise. `POST /auth/reset-password-public` consumes the code and updates `password_hash`. Both reuse Phase 11.1's `EmailVerification(purpose='reset')` pipeline.
+- Anti-enumeration: the request endpoint always returns 204; the completion endpoint folds "no such account" and "no pending code" into the same `400 invalid code` as a wrong-code attempt.
+- Frontend: new `/forgot-password` page (two-step state machine cloned from RegisterPage); LoginPage gains the "Reset it" link and a green `[ AUTH ] · Password updated` banner driven by `location.state` after a successful reset.
 
 ---
 

@@ -34,6 +34,7 @@
 | 10 打磨 + Windows 安装包 | ⬜ 待办 | electron-builder 打包、产品化收尾 |
 | 11 账号安全加固 | ✅ 已完成 (2026-05-20) | 邮箱验证码注册（Resend，免配置时降级为控制台）、密码二次确认、Google 一键登录（Web + Desktop 桌面端走 127.0.0.1 一次性 loopback 服务器） |
 | 11.1 帐号独立 + 设置面板 + 注销 | ✅ 已完成 (2026-05-20) | 同邮箱 Google + 密码账号成为两行独立账户；齿轮按钮替换帮助按钮，打开设置面板可重设密码（仅密码账号）或注销账号；密码账号注销后该邮箱 24h 内禁止密码重新注册 |
+| 11.2 忘记密码 (公开重设) | ✅ 已完成 (2026-05-20) | LoginPage 加 "Reset it" 链接到新页面 `/forgot-password`，输入邮箱 → 收码 → 设新密码 → 跳回 `/login` 用新密码登入；反枚举：邮箱不存在也 204，错码与"无账号"同一报错 |
 
 
 ---
@@ -330,6 +331,17 @@
 - DB 迁移 0007：用 `(email) WHERE google_id IS NULL` 与 `(email) WHERE google_id IS NOT NULL` 两个 partial unique index 替换 `users.email` 的全局唯一约束；新增 `deleted_users (email, deleted_at)` 表。
 - 后端：`/auth/google/callback` 改为按 Google `sub` 查询用户（不再按邮箱合并）；`/auth/request-code` 与 `/auth/register` 的"已注册"检查窄化为 `password_hash IS NOT NULL`；新增 `/auth/request-password-reset-code`、`/auth/reset-password`、`/auth/delete-account` 三个认证接口；`/me` 增加 `has_password` 字段。
 - 前端：`AuthContext` 缓存 `/me` 为 `currentUser`；`AppLayout` 顶部的占位 Help 按钮换成 Settings（齿轮）按钮，打开 `SettingsModal` —— 包含 Reset password（仅密码账号显示）与 Delete account 两部分。
+
+---
+
+## 阶段 11.2 — 忘记密码（公开重设）
+
+> **状态：✅ 已完成 (2026-05-20)。** 设计：`docs/superpowers/specs/2026-05-20-forgot-password-design.md`。计划：`docs/superpowers/plans/2026-05-20-forgot-password.md`。
+
+### 主要改动
+- 后端：新增两个不需要 JWT 的端点 `POST /auth/forgot-password`（按邮箱发 6 位重设码；无密码账号则静默 204）与 `POST /auth/reset-password-public`（邮箱 + 码 + 新密码 + 确认 → 改 `password_hash`）。两者都共用 Phase 11.1 的 `EmailVerification(purpose='reset')`。
+- 反邮箱枚举：请求端点对任何邮箱都 204；完成端点把"无账号"与"无 pending code"统一报 `400 invalid code`，与错码完全一致。
+- 前端：`/forgot-password` 新页面（两步状态机克隆自 RegisterPage）；LoginPage 加 "Reset it" 链接；重设成功后跳 `/login` 带绿色 `[ AUTH ] · Password updated` 提示条。
 
 ---
 
