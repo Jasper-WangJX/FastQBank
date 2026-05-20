@@ -32,6 +32,7 @@
 | 8.5 标签扁平化 + 跨页搜索 | ✅ 已完成 (2026-05-19) | tags 取消层级、CRUD 走抽屉、列表/复习/录题三页统一的"搜索 + AND/OR"过滤；为阶段 9 按 name 携带 tag 做准备 |
 | 9 批量操作 + 链接分享 / 导入 | ✅ 已完成 (2026-05-19) | 题库页多选 → 批量删除/统一加tag/打包成链接；粘贴链接导入题目（按 UUID 跳重） |
 | 10 打磨 + Windows 安装包 | ⬜ 待办 | electron-builder 打包、产品化收尾 |
+| 11 账号安全加固 | ✅ 已完成 (2026-05-20) | 邮箱验证码注册（Resend，免配置时降级为控制台）、密码二次确认、Google 一键登录（Web + Desktop 桌面端走 127.0.0.1 一次性 loopback 服务器） |
 
 
 ---
@@ -301,6 +302,22 @@
 
 ### 退出标准
 能把 `.exe` 发给朋友，他装上后能登录、录题、复习。
+
+---
+
+## 阶段 11 — 账号安全加固
+
+> **状态：✅ 已完成 (2026-05-20)。** 设计与计划见 `docs/superpowers/specs/2026-05-20-account-security-hardening-design.md` 与 `docs/superpowers/plans/2026-05-20-account-security-hardening.md`。
+
+### 任务
+- 后端：新增 `email_verifications` / `oauth_states` 表 + `users.google_id`（迁移 0006），新增 `/auth/request-code`、`/auth/providers`、`/auth/google/start`、`/auth/google/callback`；改造 `/auth/register` 要求 6 位验证码、`/auth/login` 显式拒绝 Google-only 账户。
+- 邮件：`apps/server/app/mail.py` 走 Resend HTTPS，`RESEND_API_KEY` 留空时降级为控制台 stub。
+- Google：`google-auth[requests]` 本地校验 id_token + PKCE，按邮箱自动合并密码账户与 Google 账户到同一个 user_id。
+- 前端：`AuthContext` 拉一次 `/auth/providers` 控制按钮显隐；`RegisterPage` 重写为两步状态机（请求验证码 → 输入验证码 + 密码 + 二次确认）；`GoogleSignInButton` 共享给登录页和注册页；新增 `/oauth/callback` web 路由。
+- 桌面端：Electron 主进程一次性 `http.createServer(127.0.0.1:0)` 收 Google 回调，IPC `oauth:start-loopback` + `oauth:open-external` + `oauth:callback`；`shell.openExternal` 白名单只允许 `https://accounts.google.com`。
+
+### 退出标准
+注册页输入两次密码不一致即时报错；同邮箱 60 秒内不能再次申请验证码；错误验证码 5 次后该验证记录被清除；`RESEND_API_KEY` 未配置时验证码打到 uvicorn 日志；`GOOGLE_CLIENT_ID` 未配置时 Google 按钮在两页都不渲染；Web Google 流程跳转 → consent → `/oauth/callback` → 题库主页；Desktop Google 流程通过默认浏览器完成后渲染进程自动登录；密码账户与同邮箱 Google 账户首次登入自动合并到同一行，事后密码登录仍可用。
 
 ---
 

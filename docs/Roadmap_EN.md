@@ -31,6 +31,7 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 | 8 AI generation | ✅ Done (2026-05-19) | Pick seeds in Review entry → mixed/AI-only flashcards → on-card "Add to question bank" (with tags+analysis) |
 | 9 Bulk ops + share-link transfer | ✅ Done (2026-05-19) | Multi-select on bank page → bulk delete / add tag / bundle into link; paste-link import (UUID dedup) |
 | 10 Polish + Windows installer | ⬜ Todo | electron-builder packaging, productization |
+| 11 Account security hardening | ✅ Done (2026-05-20) | Email verification on signup (Resend, console stub when unset), confirm-password input, Google sign-in on web + Electron desktop (loopback http server on 127.0.0.1) |
 
 ---
 
@@ -331,6 +332,22 @@ On the bank page, tick 3 questions + click "Select all N filtered" to add the re
 
 ### Exit criteria
 Hand the `.exe` to a friend; they install it, log in, enter and review questions successfully.
+
+---
+
+## Phase 11 — Account security hardening
+
+> **Status: ✅ Done (2026-05-20).** Design and plan: `docs/superpowers/specs/2026-05-20-account-security-hardening-design.md` and `docs/superpowers/plans/2026-05-20-account-security-hardening.md`.
+
+### Tasks
+- Backend: new tables `email_verifications` / `oauth_states` + `users.google_id` (migration 0006); new endpoints `/auth/request-code`, `/auth/providers`, `/auth/google/start`, `/auth/google/callback`; `/auth/register` now requires a 6-digit code, `/auth/login` rejects Google-only accounts with the same 401 (no enumeration).
+- Mail: `apps/server/app/mail.py` posts to Resend over HTTPS; stub-prints to stdout when `RESEND_API_KEY` is unset.
+- Google: `google-auth[requests]` verifies id_token locally + PKCE; auto-merges a Google sign-in into an existing password account when the email matches.
+- Frontend: `AuthContext` fetches `/auth/providers` once and uses it to gate the Google button; `RegisterPage` rewritten as a two-step state machine (request code → code + password + confirm); `GoogleSignInButton` shared between login and register; new `/oauth/callback` web route.
+- Desktop: Electron main process binds a single-use `http.createServer` on `127.0.0.1:0` per attempt; IPC channels `oauth:start-loopback` + `oauth:open-external` + `oauth:callback`; `shell.openExternal` whitelist restricts to `https://accounts.google.com`.
+
+### Exit criteria
+Password confirm-field reports a mismatch on blur; the same email cannot request a new code within 60s; five wrong codes drop the verification row; with no `RESEND_API_KEY`, the code prints to the uvicorn log; with no `GOOGLE_CLIENT_ID`, neither auth page renders the Google button; web Google flow lands at `/oauth/callback` and forwards to the question bank logged in; desktop Google flow completes via the default browser and the Electron app auto-logs-in; a password account and a same-email Google sign-in auto-merge into a single user row, after which the password login still works.
 
 ---
 
