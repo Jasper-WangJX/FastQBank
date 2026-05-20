@@ -68,6 +68,14 @@ export interface DesktopBridge {
     selectRegion(rect: RectCss): void;
     cancel(): void;
   };
+  /** Custom-titlebar controls — undefined on web (feature-detect). */
+  window: {
+    minimize(): void;
+    maximizeToggle(): void;
+    close(): void;
+    isMaximized(): Promise<boolean>;
+    onMaximizedChange(cb: (maximized: boolean) => void): () => void;
+  };
 }
 
 declare global {

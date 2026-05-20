@@ -1,8 +1,11 @@
 // Picker used by QuestionFormPage's Tags region. Like TagFilter (inline
 // variant) but with no AND/OR toggle and with an inline "+ Create &
 // select" row at the bottom. Stateless w.r.t. selection.
+//
+// Visual: Sapphire Console — sharp 2px corners, mono chips + create CTA.
 
 import { useMemo, useState } from "react";
+import { Plus, X } from "lucide-react";
 import { ApiError } from "../../lib/api";
 import { createTag, type Tag } from "../../lib/qbank";
 import TagSearchList from "./TagSearchList";
@@ -73,23 +76,26 @@ export default function TagPicker({
     .filter((t): t is Tag => Boolean(t));
 
   return (
-    <div className="rounded-md border border-gray-200 p-2">
+    <div className="rounded-sm border border-slate-200 bg-white p-2">
       {selectedTags.length > 0 && (
-        <div className="mb-2 flex flex-wrap items-center gap-1 text-xs">
-          <span className="text-gray-500">Selected:</span>
+        <div className="mb-2 flex flex-wrap items-center gap-1">
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+            Selected:
+          </span>
           {selectedTags.map((t) => (
             <span
               key={t.id}
-              className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-slate-700"
+              className="inline-flex items-center gap-1 rounded-sm border border-[#0B3B8C]/15 bg-[#DBEAFE] px-1.5 py-0.5 font-mono text-[11px] text-[#1E3A8A]"
             >
               {t.name}
               <button
                 type="button"
                 aria-label={`Remove ${t.name}`}
+                title={`Remove ${t.name}`}
                 onClick={() => toggle(t.id)}
-                className="text-slate-500 hover:text-slate-800"
+                className="inline-flex h-4 w-4 items-center justify-center text-[#0B3B8C]/70 hover:text-[#1E3A8A]"
               >
-                ×
+                <X size={11} strokeWidth={1.5} aria-hidden />
               </button>
             </span>
           ))}
@@ -108,29 +114,36 @@ export default function TagPicker({
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="New tag name"
-          className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-xs outline-none focus:border-slate-500"
+          className="flex-1 rounded-sm border border-slate-200 bg-white px-2 py-1 font-mono text-[12px] text-slate-900 outline-none transition-colors duration-150 placeholder:text-slate-400 focus:border-[#1E3A8A]"
         />
         <button
           type="button"
           disabled={!trimmed || duplicate || busy}
           onClick={onCreate}
-          className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2 py-1 font-mono text-[11px] font-medium uppercase tracking-tight text-slate-600 transition-colors duration-150 hover:border-[#2563EB] hover:text-[#0B3B8C] disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:text-slate-600"
           title={
             duplicate
               ? "Tag already exists — tick it in the list above"
               : undefined
           }
         >
-          {busy ? "Creating…" : "+ Create & select"}
+          <Plus size={12} strokeWidth={1.5} aria-hidden />
+          {busy
+            ? "Creating…"
+            : trimmed
+              ? `Create "${trimmed}"`
+              : "Create"}
         </button>
       </div>
       {duplicate && (
-        <p className="mt-1 text-xs text-amber-700">
-          Tag already exists — tick it in the list above.
+        <p className="mt-1 font-mono text-[10.5px] text-slate-500">
+          [ INFO ] · tag already exists — tick it above.
         </p>
       )}
       {error && (
-        <p className="mt-1 text-xs text-red-700">{error}</p>
+        <p className="mt-1 font-mono text-[10.5px] text-[#DC2626]">
+          [ ERROR ] · {error}
+        </p>
       )}
     </div>
   );

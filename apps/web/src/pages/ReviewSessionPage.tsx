@@ -7,9 +7,18 @@
 // "Review wrong now" (navigating /review/session -> /review/session with
 // fresh state) fully remounts a brand-new session instead of reusing
 // the stale deck/state.
+//
+// Visual layer: Sapphire Console (Variant E). Behavior preserved 1:1.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import {
+  ArrowRight,
+  CornerDownLeft,
+  Plus,
+  RotateCw,
+  X,
+} from "lucide-react";
 import type { Question } from "../lib/qbank";
 import { createQuestion } from "../lib/qbank";
 import { getWrongSet, masterWrong, postReviewLog } from "../lib/review";
@@ -20,6 +29,9 @@ import {
   type DeckCard,
 } from "../lib/review/session";
 import Latex from "../components/Latex";
+
+const MONO_FAMILY =
+  "ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace";
 
 interface ReviewConfig {
   questions: Question[];
@@ -104,12 +116,18 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
 
   if (deck.length === 0) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-gray-600">
-          No questions to review.{" "}
+      <div
+        className="rounded-sm border-2 border-slate-200 bg-white p-6"
+        style={{ fontFamily: "ui-sans-serif, Inter, system-ui, sans-serif" }}
+      >
+        <p
+          className="font-mono text-[12px] text-slate-600"
+          style={{ fontFamily: MONO_FAMILY }}
+        >
+          &gt; No questions to review.{" "}
           <button
             onClick={() => navigate("/review")}
-            className="text-slate-700 underline"
+            className="text-[#0B3B8C] underline hover:text-[#1E3A8A]"
           >
             Back to review
           </button>
@@ -125,7 +143,7 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
     try {
       const w = await getWrongSet();
       if (w.items.length === 0) {
-        setWrongNote("No wrong questions — nothing to review. 🎉");
+        setWrongNote("No wrong questions — nothing to review.");
         return;
       }
       navigate("/review/session", {
@@ -148,23 +166,46 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
   if (finished) {
     const wrong = results.filter((r) => !r.correct);
     return (
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h1 className="text-lg font-semibold">Session complete</h1>
-        <p className="mt-2 text-sm">
-          ✅ {results.length - wrong.length} / {results.length} correct
-          {"  "}·{"  "}❌ {wrong.length} wrong
+      <div
+        className="rounded-sm border-2 border-slate-200 bg-white p-6"
+        style={{ fontFamily: "ui-sans-serif, Inter, system-ui, sans-serif" }}
+      >
+        <div
+          className="font-mono uppercase tracking-[0.18em] text-[10px] text-slate-500"
+          style={{ fontFamily: MONO_FAMILY }}
+        >
+          [ SESSION COMPLETE ]
+        </div>
+        <h1 className="mt-1 text-[24px] font-semibold tracking-tight text-[#0A2540]">
+          Session complete
+        </h1>
+        <p
+          className="mt-1 font-mono text-[12px] text-slate-700"
+          style={{ fontFamily: MONO_FAMILY }}
+        >
+          &gt; ✓ {results.length - wrong.length}/{results.length} correct ·
+          ✗ {wrong.length} wrong
         </p>
         {wrong.length > 0 && (
-          <div className="mt-3 rounded-md border border-gray-200 p-3">
-            <p className="mb-1 text-xs font-medium text-gray-500">
-              Wrong this session
+          <div className="mt-4 rounded-sm border-2 border-slate-200 p-3">
+            <p
+              className="mb-2 font-mono uppercase tracking-[0.18em] text-[10px] text-slate-500"
+              style={{ fontFamily: MONO_FAMILY }}
+            >
+              WRONG THIS SESSION
             </p>
             <ul className="space-y-1">
               {wrong.map((r) => (
-                <li key={r.question.id}>
+                <li key={r.question.id} className="flex items-start gap-2">
+                  <span
+                    className="mt-0.5 shrink-0 font-mono text-[11px] text-red-600"
+                    style={{ fontFamily: MONO_FAMILY }}
+                  >
+                    [ ! ]
+                  </span>
                   <Latex
                     text={r.question.stem}
-                    className="line-clamp-1 block text-sm text-gray-700"
+                    className="line-clamp-1 block flex-1 text-[13px] text-slate-700"
                   />
                 </li>
               ))}
@@ -172,20 +213,29 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
           </div>
         )}
         {wrongNote && (
-          <p className="mt-3 text-sm text-amber-700">{wrongNote}</p>
+          <p
+            className="mt-3 font-mono text-[12px] text-red-700"
+            style={{ fontFamily: MONO_FAMILY }}
+          >
+            [ ERROR ] · {wrongNote}
+          </p>
         )}
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           <button
             onClick={onReviewWrongNow}
-            className="rounded-md border border-amber-500 bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-200"
+            className="inline-flex items-center gap-2 rounded-sm border-2 border-slate-300 bg-white px-3 py-2 font-mono text-[11.5px] uppercase tracking-wider text-slate-700 transition-colors duration-120 hover:border-[#1E3A8A] hover:text-[#0B3B8C]"
+            style={{ fontFamily: MONO_FAMILY }}
           >
-            Review wrong now
+            <span className="text-red-600">[ ! ]</span>
+            <span>REVIEW WRONG NOW</span>
           </button>
           <button
             onClick={() => navigate("/review")}
-            className="rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            className="inline-flex items-center gap-2 rounded-sm border-2 border-[#1E3A8A] bg-[#1E3A8A] px-3 py-2 font-mono text-[11.5px] uppercase tracking-wider text-white transition-colors duration-120 hover:bg-[#0B3B8C]"
+            style={{ fontFamily: MONO_FAMILY }}
           >
-            Back to review home
+            <CornerDownLeft size={13} strokeWidth={1.5} />
+            BACK TO REVIEW HOME
           </button>
         </div>
       </div>
@@ -294,38 +344,63 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
   const pickedSet = new Set(picked);
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div
+      className="rounded-sm border-2 border-slate-200 bg-white p-6"
+      style={{ fontFamily: "ui-sans-serif, Inter, system-ui, sans-serif" }}
+    >
       {notice && (
-        <div className="mb-3 flex items-center justify-between rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          <span>{notice}</span>
+        <div
+          className="mb-3 flex items-center justify-between rounded-sm border border-[#1E3A8A] bg-[#EFF6FF] px-3 py-2"
+          style={{ fontFamily: MONO_FAMILY }}
+        >
+          <span className="font-mono text-[12px] text-[#0B3B8C]">
+            [ INFO ] · {notice}
+          </span>
           <button
             onClick={() => setNotice(null)}
-            className="rounded border border-amber-300 px-2 py-0.5 text-xs hover:bg-amber-100"
+            aria-label="Dismiss"
+            title="Dismiss"
+            className="flex h-6 w-6 items-center justify-center rounded-sm border border-[#1E3A8A]/40 text-[#0B3B8C] transition-colors duration-120 hover:bg-white"
           >
-            Dismiss
+            <X size={12} strokeWidth={1.5} />
           </button>
         </div>
       )}
       {logError && (
-        <div className="mb-3 flex items-center justify-between rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-          <span>{logError}</span>
+        <div
+          className="mb-3 flex items-center justify-between rounded-sm border-2 border-red-300 bg-red-50 px-3 py-2"
+          style={{ fontFamily: MONO_FAMILY }}
+        >
+          <span className="font-mono text-[12px] text-red-700">
+            [ ERROR ] · {logError}
+          </span>
           <button
             onClick={retryLog}
-            className="rounded border border-red-300 px-2 py-0.5 text-xs hover:bg-red-100"
+            className="inline-flex items-center gap-1 rounded-sm border border-red-300 px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-wider text-red-700 hover:bg-red-100"
           >
+            <RotateCw size={11} strokeWidth={1.5} />
             Retry
           </button>
         </div>
       )}
 
-      <div className="flex items-center justify-between text-xs text-gray-500">
-        <span>
-          Card {idx + 1} / {deck.length}
+      {/* Top metadata strip */}
+      <div className="flex items-center justify-between">
+        <span
+          className="font-mono uppercase tracking-[0.18em] text-[10px] text-slate-500"
+          style={{ fontFamily: MONO_FAMILY }}
+        >
+          CARD {idx + 1} / {deck.length}
         </span>
-        <span>{q.type}</span>
+        <span
+          className="inline-flex h-[20px] items-center rounded-sm border border-slate-200 bg-slate-50 px-2 font-mono text-[10.5px] uppercase tracking-tight text-slate-600"
+          style={{ fontFamily: MONO_FAMILY }}
+        >
+          [ {String(q.type).toUpperCase()} ]
+        </span>
       </div>
 
-      <div className="mt-3 text-base text-gray-900">
+      <div className="mt-3 text-[15px] text-slate-900">
         <Latex text={q.stem} />
       </div>
 
@@ -333,46 +408,77 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
         {card.options.map((o) => {
           const isPicked = pickedSet.has(o.label);
           const isCorrect = correctSet.has(o.label);
+          // Default: hairline + white.
           let cls =
-            "border border-gray-300 bg-white hover:bg-gray-50";
+            "border-slate-200 bg-white hover:bg-[#EFF6FF] hover:border-[#1E3A8A]";
+          // Reveal states (correct first — even if also picked).
           if (revealed && isCorrect)
-            cls = "border-green-500 bg-green-50";
+            cls = "border-[#1E3A8A] bg-[#EFF6FF]";
           else if (revealed && isPicked && !isCorrect)
             cls = "border-red-500 bg-red-50";
           else if (!revealed && isPicked)
-            cls = "border-blue-500 bg-blue-50";
+            cls = "border-[#1E3A8A] bg-[#EFF6FF]";
           return (
             <button
               key={o.label}
               disabled={revealed}
               onClick={() => togglePick(o.label)}
               className={
-                "flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-sm disabled:cursor-default " +
+                "flex w-full items-start gap-2 rounded-sm border-2 px-3 py-2 text-left text-[13.5px] transition-colors duration-120 disabled:cursor-default " +
                 cls
               }
             >
-              <span className="font-medium text-gray-600">
+              <span
+                className="shrink-0 font-mono text-[12px] font-medium text-slate-600"
+                style={{ fontFamily: MONO_FAMILY }}
+              >
                 {o.label}.
               </span>
-              <Latex text={o.content} className="flex-1" />
-              {revealed && isCorrect && (
-                <span className="text-green-700">✓</span>
-              )}
-              {revealed && isPicked && !isCorrect && (
-                <span className="text-red-700">✗</span>
-              )}
+              <Latex text={o.content} className="flex-1 text-slate-900" />
+              {/* Trailing mono chip — order matters: correct beats wrong-pick. */}
+              {revealed && isCorrect ? (
+                <span
+                  className="shrink-0 rounded-sm border border-[#1E3A8A] bg-white px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-[#0B3B8C]"
+                  style={{ fontFamily: MONO_FAMILY }}
+                >
+                  [OK]
+                </span>
+              ) : revealed && isPicked && !isCorrect ? (
+                <span
+                  className="shrink-0 rounded-sm border border-red-300 bg-white px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-red-700"
+                  style={{ fontFamily: MONO_FAMILY }}
+                >
+                  [X]
+                </span>
+              ) : !revealed && isPicked ? (
+                <span
+                  className="shrink-0 rounded-sm border border-[#1E3A8A] bg-white px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-[#0B3B8C]"
+                  style={{ fontFamily: MONO_FAMILY }}
+                >
+                  [SELECTED]
+                </span>
+              ) : null}
             </button>
           );
         })}
       </div>
 
       {revealed && q.knowledge_summary && (
-        <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-          💡 <Latex text={q.knowledge_summary} />
+        <div className="mt-4 rounded-sm border-2 border-slate-200 bg-[#EFF6FF] px-3 py-2.5">
+          <div
+            className="mb-1 font-mono uppercase tracking-[0.18em] text-[10px] text-slate-500"
+            style={{ fontFamily: MONO_FAMILY }}
+          >
+            KNOWLEDGE SUMMARY
+          </div>
+          <Latex
+            text={q.knowledge_summary}
+            className="text-[13.5px] text-slate-800"
+          />
         </div>
       )}
 
-      <div className="mt-5 flex items-center gap-2">
+      <div className="mt-5 flex flex-wrap items-center gap-2">
         {!revealed ? (
           // Fast mode + single/judge: picking auto-reveals, so the
           // Check button is useless and hidden. Multi still needs
@@ -381,9 +487,11 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
             <button
               disabled={picked.length === 0}
               onClick={() => doReveal()}
-              className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-sm border-2 border-[#1E3A8A] bg-[#1E3A8A] px-4 py-2 font-mono text-[12px] uppercase tracking-wider text-white transition-colors duration-120 hover:bg-[#0B3B8C] disabled:opacity-60"
+              style={{ fontFamily: MONO_FAMILY }}
             >
-              {isMulti ? "Submit" : "Check"}
+              <CornerDownLeft size={13} strokeWidth={1.5} />
+              {isMulti ? "SUBMIT" : "CHECK"}
             </button>
           )
         ) : (
@@ -395,12 +503,19 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
                 <button
                   disabled={mastered.has(q.id)}
                   onClick={onMaster}
-                  className="rounded-md border border-amber-500 bg-amber-100 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-200 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-sm border-2 border-slate-300 bg-white px-3 py-2 font-mono text-[11.5px] uppercase tracking-wider text-slate-700 transition-colors duration-120 hover:border-[#1E3A8A] hover:text-[#0B3B8C] disabled:opacity-50"
+                  style={{ fontFamily: MONO_FAMILY }}
                 >
-                  {mastered.has(q.id) ? "Mastered ✓" : "Mark as mastered"}
+                  <span aria-hidden>↑</span>
+                  {mastered.has(q.id) ? "MASTERED ✓" : "MASTERED"}
                 </button>
                 {masterError && (
-                  <span className="text-xs text-red-700">{masterError}</span>
+                  <span
+                    className="font-mono text-[11px] text-red-700"
+                    style={{ fontFamily: MONO_FAMILY }}
+                  >
+                    [ ERROR ] · {masterError}
+                  </span>
                 )}
               </div>
             )}
@@ -408,9 +523,11 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
             {!fastMode && (
               <button
                 onClick={next}
-                className="ml-auto rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                className="ml-auto inline-flex items-center gap-2 rounded-sm border-2 border-[#1E3A8A] bg-[#1E3A8A] px-4 py-2 font-mono text-[12px] uppercase tracking-wider text-white transition-colors duration-120 hover:bg-[#0B3B8C]"
+                style={{ fontFamily: MONO_FAMILY }}
               >
-                {idx + 1 >= deck.length ? "Finish" : "Next →"}
+                {idx + 1 >= deck.length ? "FINISH" : "NEXT"}
+                <ArrowRight size={13} strokeWidth={1.5} />
               </button>
             )}
           </>
@@ -420,20 +537,28 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
             <button
               disabled={added.has(q.id)}
               onClick={onAddToBank}
-              className="rounded-md border border-emerald-500 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-sm border-2 border-slate-300 bg-white px-3 py-2 font-mono text-[11.5px] uppercase tracking-wider text-slate-700 transition-colors duration-120 hover:border-[#1E3A8A] hover:text-[#0B3B8C] disabled:opacity-50"
+              style={{ fontFamily: MONO_FAMILY }}
             >
-              {added.has(q.id) ? "Added ✓" : "Add to question bank"}
+              <Plus size={12} strokeWidth={1.5} />
+              {added.has(q.id) ? "ADDED ✓" : "ADD TO BANK"}
             </button>
             {addError && (
-              <span className="text-xs text-red-700">{addError}</span>
+              <span
+                className="font-mono text-[11px] text-red-700"
+                style={{ fontFamily: MONO_FAMILY }}
+              >
+                [ ERROR ] · {addError}
+              </span>
             )}
           </div>
         )}
         <button
           onClick={() => navigate("/review")}
-          className="rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+          className="inline-flex items-center gap-1 rounded-sm border-2 border-slate-300 bg-white px-3 py-2 font-mono text-[11.5px] uppercase tracking-wider text-slate-600 transition-colors duration-120 hover:border-[#1E3A8A] hover:text-[#0B3B8C]"
+          style={{ fontFamily: MONO_FAMILY }}
         >
-          Quit
+          QUIT
         </button>
       </div>
     </div>

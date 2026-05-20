@@ -57,7 +57,8 @@ export default function OverlayCapture() {
           sel.w,
           sel.h,
         );
-        ctx.strokeStyle = "#38bdf8";
+        // Sapphire-Console accent — matches the rest of the UI.
+        ctx.strokeStyle = "#60A5FA";
         ctx.lineWidth = 2;
         ctx.strokeRect(sel.x + 1, sel.y + 1, sel.w - 2, sel.h - 2);
       }
@@ -144,8 +145,8 @@ export default function OverlayCapture() {
         onMouseUp={onMouseUp}
         className="block h-screen w-screen cursor-crosshair"
       />
-      <div className="pointer-events-none fixed left-1/2 top-4 -translate-x-1/2 rounded-md bg-black/70 px-3 py-1.5 text-sm text-white">
-        Drag to select the question · Esc to cancel
+      <div className="pointer-events-none fixed left-1/2 top-4 -translate-x-1/2 rounded-sm border border-white/20 bg-[#1E3A8A]/90 px-3 py-1.5 font-mono text-xs uppercase tracking-[0.12em] text-white">
+        [ OCR ] · drag to select · esc to cancel
       </div>
     </div>
   );

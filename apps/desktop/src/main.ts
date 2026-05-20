@@ -140,7 +140,19 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    minWidth: 720,
+    minHeight: 480,
     icon: path.join(__dirname, "..", "assets", "icon.png"),
+    // Frameless: kill the native title bar + system menu so the renderer
+    // can paint its own min/max/close buttons (sapphire-console style).
+    // The header in AppLayout is marked as -webkit-app-region: drag so
+    // users can still move the window.
+    frame: false,
+    // Hide the application menu bar (File / Edit / View …) entirely;
+    // Menu.setApplicationMenu(null) below covers the keyboard-toggleable
+    // mnemonic menu path too.
+    autoHideMenuBar: true,
+    backgroundColor: "#ffffff",
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
@@ -155,6 +167,15 @@ function createWindow(): void {
   } else {
     void mainWindow.loadURL(APP_ORIGIN_URL);
   }
+
+  // Tell the renderer when the OS-level maximize state flips (e.g. user
+  // double-clicked the drag region or used Win+Up/Down), so the custom
+  // max/restore icon stays in sync.
+  const sendMax = (maximized: boolean): void => {
+    mainWindow?.webContents.send(IPC.windowMaximized, maximized);
+  };
+  mainWindow.on("maximize", () => sendMax(true));
+  mainWindow.on("unmaximize", () => sendMax(false));
 
   // Close-to-tray: intercept the window close and just hide, unless a
   // real quit is in progress.
@@ -259,7 +280,7 @@ function createTray(): void {
     path.join(__dirname, "..", "assets", "tray.png"),
   );
   tray = new Tray(icon);
-  tray.setToolTip("AI Question Bank");
+  tray.setToolTip("FastQBank");
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Open", click: () => showWindow() },
@@ -286,12 +307,21 @@ if (!gotLock) {
   app.on("second-instance", () => showWindow());
 
   void app.whenReady().then(() => {
+    // Belt-and-braces against the default Electron menu: even with
+    // `autoHideMenuBar: true`, calling setApplicationMenu(null) here
+    // guarantees no menu can be summoned via Alt or accelerators.
+    Menu.setApplicationMenu(null);
+
     registerAppProtocol();
     createWindow();
     createTray();
 
     // OCR capture flow (roadmap stage 5).
-    registerIpc({ onTrigger: captureAndRecognize, getSidecarState });
+    registerIpc({
+      onTrigger: captureAndRecognize,
+      getSidecarState,
+      getMainWindow: () => mainWindow,
+    });
     void startSidecar();
     const acc = registerShortcut(captureAndRecognize);
     process.stderr.write(

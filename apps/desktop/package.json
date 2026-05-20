@@ -2,7 +2,7 @@
   "name": "desktop",
   "private": true,
   "version": "0.0.0",
-  "description": "Electron desktop shell for AI Question Bank — reuses the apps/web production build, loaded via a custom app:// protocol.",
+  "description": "Electron desktop shell for FastQBank — reuses the apps/web production build, loaded via a custom app:// protocol.",
   "main": "out/main.js",
   "scripts": {
     "gen:icons": "node scripts/gen-icons.cjs",
@@ -16,7 +16,7 @@
   },
   "build": {
     "appId": "com.fastqbank.desktop",
-    "productName": "AI Question Bank",
+    "productName": "FastQBank",
     "directories": {
       "output": "release"
     },

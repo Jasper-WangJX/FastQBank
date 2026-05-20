@@ -1,12 +1,22 @@
 // The review picker (spec §6.1). Selection is ONE global Set<questionId>
-// that survives switching sources — a question stays green wherever it
-// appears (incl. multi-tagged). Sources: "All questions", "Wrong
+// that survives switching sources — a question stays selected wherever
+// it appears (incl. multi-tagged). Sources: "All questions", "Wrong
 // questions", or a multi-tag filter (AND/OR). "Select all" uses the
 // dedicated id endpoint so it covers the whole active source, not
 // just the loaded page. Selection is session-only (not persisted).
+//
+// Visual layer: Sapphire Console (Variant E). Behavior preserved 1:1.
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  CornerDownLeft,
+  LayoutGrid,
+  List,
+} from "lucide-react";
 import { ApiError } from "../lib/api";
 import {
   listQuestions,
@@ -35,6 +45,10 @@ import TagManageDrawer from "../components/tags/TagManageDrawer";
 const PAGE_SIZE = 10;
 const WRONG = "__wrong__"; // sentinel "tag" id for the wrong-set entry
 const ALL = "__all__"; // sentinel: every question (no tag filter)
+
+// Shared sapphire token tuples kept inline so this file is self-contained.
+const MONO_FAMILY =
+  "ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace";
 
 export default function ReviewEntryPage() {
   const navigate = useNavigate();
@@ -309,34 +323,100 @@ export default function ReviewEntryPage() {
   }
 
   const showingPager = (activeId !== "" || tagFilterActive) && activeId !== WRONG;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
+  const from = total === 0 ? 0 : offset + 1;
+  const to = Math.min(offset + PAGE_SIZE, total);
+
+  // Source eyebrow shown above the list.
+  const sourceLabel =
+    activeId === WRONG
+      ? `WRONG QUESTIONS · ${total}`
+      : activeId === ALL
+        ? `ALL QUESTIONS · ${total}`
+        : tagFilterActive
+          ? `BY TAG FILTER · ${total}`
+          : "SELECT A SOURCE";
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <h1 className="text-lg font-semibold">Review</h1>
+    <div
+      className="rounded-sm border-2 border-slate-200 bg-white p-6"
+      style={{ fontFamily: "ui-sans-serif, Inter, system-ui, sans-serif" }}
+    >
+      <style>{`
+        @keyframes rep-rowin { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
+        .rep-row { animation: rep-rowin 220ms ease-out both; }
+        @media (prefers-reduced-motion: reduce) {
+          .rep-row { animation: none !important; }
+        }
+      `}</style>
+
+      {/* Eyebrow + title + mono subtitle */}
+      <div
+        className="font-mono uppercase tracking-[0.18em] text-[10px] text-slate-500"
+        style={{ fontFamily: MONO_FAMILY }}
+      >
+        MODULE / REVIEW
+      </div>
+      <h1 className="mt-1 text-[26px] font-semibold tracking-tight text-[#0A2540]">
+        Review
+      </h1>
+      <div
+        className="mt-1 font-mono text-[11.5px] text-slate-600"
+        style={{ fontFamily: MONO_FAMILY }}
+      >
+        &gt; {selected.size} selected · {wrongTotal} wrong
+      </div>
 
       {error && (
-        <div className="mt-3 rounded-md border border-red-400 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
+        <div
+          className="mt-4 rounded-sm border-2 border-red-300 bg-red-50 px-3 py-2 font-mono text-[12px] text-red-700"
+          style={{ fontFamily: MONO_FAMILY }}
+        >
+          [ ERROR ] · {error}
         </div>
       )}
 
       <div className="mt-4 flex gap-4">
-        {/* Tag column */}
-        <div className="w-64 shrink-0 space-y-2">
-          <div className="rounded-md border border-gray-200 p-2">
+        {/* Left rail: source picker + tag filter */}
+        <div className="w-64 shrink-0 space-y-3">
+          <div className="rounded-sm border-2 border-slate-200 bg-white p-2">
             <button
               onClick={() => {
                 pick(WRONG);
                 setTagIds([]);
               }}
               className={
-                "block w-full rounded px-2 py-1 text-left text-sm " +
+                "block w-full rounded-sm px-2 py-1.5 text-left text-[12px] transition-colors duration-120 " +
                 (activeId === WRONG
-                  ? "bg-amber-100 font-medium text-amber-900"
-                  : "text-amber-800 hover:bg-amber-50")
+                  ? "bg-[#1E3A8A] text-white"
+                  : "text-slate-700 hover:bg-[#EFF6FF]")
               }
+              style={{ fontFamily: MONO_FAMILY }}
             >
-              ⚠ Wrong questions ({wrongTotal})
+              <span
+                className={
+                  activeId === WRONG ? "text-white/90" : "text-red-600"
+                }
+              >
+                [ ! ]
+              </span>{" "}
+              <span
+                className={
+                  activeId === WRONG
+                    ? "uppercase tracking-wider text-white"
+                    : "uppercase tracking-wider text-slate-700"
+                }
+              >
+                WRONG QUESTIONS
+              </span>{" "}
+              <span
+                className={
+                  activeId === WRONG ? "text-white/80" : "text-slate-500"
+                }
+              >
+                ({wrongTotal})
+              </span>
             </button>
             <button
               onClick={() => {
@@ -344,15 +424,17 @@ export default function ReviewEntryPage() {
                 setTagIds([]);
               }}
               className={
-                "mt-1 block w-full rounded px-2 py-1 text-left text-sm " +
+                "mt-1 block w-full rounded-sm px-2 py-1.5 text-left text-[12px] uppercase tracking-wider transition-colors duration-120 " +
                 (activeId === ALL && tagIds.length === 0
-                  ? "bg-slate-800 text-white"
-                  : "text-gray-700 hover:bg-gray-100")
+                  ? "bg-[#1E3A8A] text-white"
+                  : "text-slate-700 hover:bg-[#EFF6FF]")
               }
+              style={{ fontFamily: MONO_FAMILY }}
             >
-              All questions
+              ALL QUESTIONS
             </button>
           </div>
+
           <TagFilter
             tags={tags}
             selectedIds={tagIds}
@@ -381,65 +463,83 @@ export default function ReviewEntryPage() {
           />
         </div>
 
-        {/* Main area: questions for the active source */}
-        <div className="min-w-0 flex-1 rounded-md border border-gray-200 p-3">
+        {/* Right pane: main list area */}
+        <div className="min-w-0 flex-1 rounded-sm border-2 border-slate-200 bg-white">
           {activeId === "" && !tagFilterActive ? (
-            <p className="text-sm text-gray-500">
-              Select tags above (or choose All / Wrong questions) to start.
+            <p
+              className="p-4 font-mono text-[12px] text-slate-500"
+              style={{ fontFamily: MONO_FAMILY }}
+            >
+              &gt; Select tags above (or choose All / Wrong questions) to start.
             </p>
           ) : (
             <>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">
-                  {activeId === WRONG
-                    ? `Wrong questions (${total})`
-                    : activeId === ALL
-                      ? `All questions (${total})`
-                      : `Questions (${total})`}
+              {/* Header row inside the pane */}
+              <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
+                <span
+                  className="font-mono uppercase tracking-[0.18em] text-[10.5px] text-slate-500"
+                  style={{ fontFamily: MONO_FAMILY }}
+                >
+                  {sourceLabel}
                 </span>
                 <div className="flex items-center gap-2">
-                  <div className="flex overflow-hidden rounded-md border border-gray-300 text-xs">
+                  {/* Segmented List / Cards toggle */}
+                  <div className="inline-flex items-stretch overflow-hidden rounded-sm border border-slate-200">
                     <button
                       onClick={() => setView("list")}
+                      aria-label="List view"
+                      title="List view"
                       className={
-                        "px-2 py-1 " +
+                        "flex h-7 w-8 items-center justify-center transition-colors duration-120 " +
                         (view === "list"
-                          ? "bg-slate-800 text-white"
-                          : "text-gray-600 hover:bg-gray-50")
+                          ? "bg-[#1E3A8A] text-white"
+                          : "bg-white text-slate-600 hover:bg-slate-50 hover:text-[#0B3B8C]")
                       }
                     >
-                      List
+                      <List size={14} strokeWidth={1.5} />
                     </button>
+                    <div className="w-px self-stretch bg-slate-200" />
                     <button
                       onClick={() => setView("cards")}
+                      aria-label="Cards view"
+                      title="Cards view"
                       className={
-                        "px-2 py-1 " +
+                        "flex h-7 w-8 items-center justify-center transition-colors duration-120 " +
                         (view === "cards"
-                          ? "bg-slate-800 text-white"
-                          : "text-gray-600 hover:bg-gray-50")
+                          ? "bg-[#1E3A8A] text-white"
+                          : "bg-white text-slate-600 hover:bg-slate-50 hover:text-[#0B3B8C]")
                       }
                     >
-                      Cards
+                      <LayoutGrid size={14} strokeWidth={1.5} />
                     </button>
                   </div>
                   <button
                     disabled={sourceIds.length === 0}
                     onClick={onToggleAll}
-                    className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+                    className="rounded-sm border border-slate-200 bg-white px-2 py-1 font-mono text-[10.5px] uppercase tracking-wider text-slate-600 transition-colors duration-120 hover:border-[#1E3A8A] hover:text-[#0B3B8C] disabled:opacity-50"
+                    style={{ fontFamily: MONO_FAMILY }}
                   >
                     {everySelected ? "Deselect all" : "Select all"}
                   </button>
                 </div>
               </div>
 
-              {items === null ? (
-                <p className="mt-3 text-sm text-gray-500">Loading…</p>
-              ) : items.length === 0 ? (
-                <p className="mt-3 text-sm text-gray-500">
-                  No questions here.
-                </p>
-              ) : view === "cards" ? (
-                <div className="mt-3">
+              <div className="p-3">
+                {items === null ? (
+                  <p
+                    className="font-mono text-[12px] text-slate-500"
+                    style={{ fontFamily: MONO_FAMILY }}
+                  >
+                    &gt; Loading…
+                  </p>
+                ) : items.length === 0 ? (
+                  <p
+                    className="font-mono text-[12px] text-slate-500"
+                    style={{ fontFamily: MONO_FAMILY }}
+                  >
+                    &gt; No questions here.
+                  </p>
+                ) : view === "cards" ? (
                   <QuestionCardGrid>
                     {items.map((q) => {
                       const on = selected.has(q.id);
@@ -453,9 +553,10 @@ export default function ReviewEntryPage() {
                                 <button
                                   disabled={busy}
                                   onClick={() => onMasterRow(q.id)}
-                                  className="rounded-md border border-amber-400 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                                  className="rounded-sm border border-slate-300 bg-white px-2 py-1 font-mono text-[10.5px] uppercase tracking-wider text-slate-700 transition-colors duration-120 hover:border-[#1E3A8A] hover:text-[#0B3B8C] disabled:opacity-50"
+                                  style={{ fontFamily: MONO_FAMILY }}
                                 >
-                                  Mastered
+                                  ↑ MASTERED
                                 </button>
                               )}
                               <button
@@ -463,13 +564,13 @@ export default function ReviewEntryPage() {
                                 aria-label={on ? "Selected" : "Select"}
                                 title={on ? "Selected" : "Select"}
                                 className={
-                                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-medium " +
+                                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border-2 transition-colors duration-120 " +
                                   (on
-                                    ? "bg-green-600 text-white hover:bg-green-700"
-                                    : "border border-gray-300 text-gray-400 hover:bg-gray-50")
+                                    ? "border-[#1E3A8A] bg-[#1E3A8A] text-white"
+                                    : "border-slate-300 text-transparent hover:border-[#1E3A8A]")
                                 }
                               >
-                                {on ? "✓" : ""}
+                                {on ? <Check size={12} strokeWidth={2} /> : null}
                               </button>
                             </>
                           }
@@ -477,92 +578,120 @@ export default function ReviewEntryPage() {
                       );
                     })}
                   </QuestionCardGrid>
-                </div>
-              ) : (
-                <div className="mt-3 divide-y divide-gray-100">
-                  {items.map((q) => {
-                    const on = selected.has(q.id);
-                    return (
-                      <div
-                        key={q.id}
-                        className="flex items-center gap-3 py-2"
-                      >
-                        <Latex
-                          text={q.stem}
-                          className="line-clamp-2 min-w-0 flex-1 text-sm text-gray-800"
-                        />
-                        <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">
-                          {q.type}
-                        </span>
-                        {activeId === WRONG && (
-                          <button
-                            disabled={busy}
-                            onClick={() => onMasterRow(q.id)}
-                            className="shrink-0 rounded-md border border-amber-400 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
-                          >
-                            Mastered
-                          </button>
-                        )}
-                        <button
-                          onClick={() => onToggleQuestion(q.id)}
-                          aria-label={on ? "Selected" : "Select"}
-                          title={on ? "Selected" : "Select"}
-                          className={
-                            "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-medium " +
-                            (on
-                              ? "bg-green-600 text-white hover:bg-green-700"
-                              : "border border-gray-300 text-gray-400 hover:bg-gray-50")
-                          }
+                ) : (
+                  <ul className="divide-y divide-slate-100">
+                    {items.map((q, i) => {
+                      const on = selected.has(q.id);
+                      const idxLabel = String(i + 1).padStart(3, "0");
+                      return (
+                        <li
+                          key={q.id}
+                          className="rep-row flex items-center gap-3 py-2.5"
+                          style={{ animationDelay: `${i * 10}ms` }}
                         >
-                          {on ? "✓" : ""}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                          <span
+                            className="w-8 shrink-0 font-mono text-[11px] tabular-nums text-slate-400"
+                            style={{ fontFamily: MONO_FAMILY }}
+                          >
+                            {idxLabel}
+                          </span>
+                          <Latex
+                            text={q.stem}
+                            className="line-clamp-2 min-w-0 flex-1 text-[13px] text-slate-900"
+                          />
+                          <span
+                            className="inline-flex h-[20px] shrink-0 items-center rounded-sm border border-slate-200 bg-slate-50 px-1.5 font-mono text-[10.5px] uppercase tracking-tight text-slate-600"
+                            style={{ fontFamily: MONO_FAMILY }}
+                          >
+                            {q.type}
+                          </span>
+                          {activeId === WRONG && (
+                            <button
+                              disabled={busy}
+                              onClick={() => onMasterRow(q.id)}
+                              className="shrink-0 rounded-sm border border-slate-300 bg-white px-2 py-1 font-mono text-[10.5px] uppercase tracking-wider text-slate-700 transition-colors duration-120 hover:border-[#1E3A8A] hover:text-[#0B3B8C] disabled:opacity-50"
+                              style={{ fontFamily: MONO_FAMILY }}
+                            >
+                              ↑ MASTERED
+                            </button>
+                          )}
+                          <button
+                            onClick={() => onToggleQuestion(q.id)}
+                            aria-label={on ? "Selected" : "Select"}
+                            title={on ? "Selected" : "Select"}
+                            className={
+                              "flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border-2 transition-colors duration-120 " +
+                              (on
+                                ? "border-[#1E3A8A] bg-[#1E3A8A] text-white"
+                                : "border-slate-300 text-transparent hover:border-[#1E3A8A]")
+                            }
+                          >
+                            {on ? <Check size={12} strokeWidth={2} /> : null}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
 
-              {showingPager && total > PAGE_SIZE && (
-                <div className="mt-3 flex items-center justify-between text-sm text-gray-600">
-                  <span>
-                    {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of{" "}
-                    {total}
-                  </span>
-                  <div className="flex gap-2">
-                    <button
-                      disabled={offset === 0}
-                      onClick={() =>
-                        setOffset((o) => Math.max(0, o - PAGE_SIZE))
-                      }
-                      className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+                {showingPager && total > PAGE_SIZE && (
+                  <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+                    <span
+                      className="font-mono text-[11px] text-slate-600"
+                      style={{ fontFamily: MONO_FAMILY }}
                     >
-                      Prev
-                    </button>
-                    <button
-                      disabled={offset + PAGE_SIZE >= total}
-                      onClick={() => setOffset((o) => o + PAGE_SIZE)}
-                      className="rounded-md border border-gray-300 px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      Next
-                    </button>
+                      PAGE {currentPage}/{pages} — {from}..{to} of {total}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        disabled={offset === 0}
+                        onClick={() =>
+                          setOffset((o) => Math.max(0, o - PAGE_SIZE))
+                        }
+                        aria-label="Previous page"
+                        title="Previous page"
+                        className="flex h-7 w-7 items-center justify-center rounded-sm border-2 border-slate-200 bg-white text-slate-600 transition-colors duration-120 hover:border-[#1E3A8A] hover:text-[#0B3B8C] disabled:opacity-50"
+                      >
+                        <ChevronLeft size={14} strokeWidth={1.5} />
+                      </button>
+                      <button
+                        disabled={offset + PAGE_SIZE >= total}
+                        onClick={() => setOffset((o) => o + PAGE_SIZE)}
+                        aria-label="Next page"
+                        title="Next page"
+                        className="flex h-7 w-7 items-center justify-center rounded-sm border-2 border-slate-200 bg-white text-slate-600 transition-colors duration-120 hover:border-[#1E3A8A] hover:text-[#0B3B8C] disabled:opacity-50"
+                      >
+                        <ChevronRight size={14} strokeWidth={1.5} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </>
           )}
         </div>
       </div>
 
       {/* Bottom Submit bar */}
-      <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-gray-200 pt-4 text-sm">
-        <span className="font-semibold">{selected.size} selected</span>
-        <label className="flex items-center gap-1">
+      <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-slate-200 pt-4">
+        <span
+          className="font-mono text-[11.5px] font-semibold text-[#1E3A8A]"
+          style={{ fontFamily: MONO_FAMILY }}
+        >
+          [ {selected.size} SELECTED ]
+        </span>
+
+        <label
+          className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-700"
+          style={{ fontFamily: MONO_FAMILY }}
+        >
           <input
             type="checkbox"
             checked={randomPick}
             onChange={(e) => setRandomPick(e.target.checked)}
+            className="h-3.5 w-3.5 accent-[#1E3A8A]"
           />
-          Random pick
+          RANDOM PICK
         </label>
         <input
           type="number"
@@ -572,41 +701,58 @@ export default function ReviewEntryPage() {
           onChange={(e) =>
             setCount(Math.max(1, Number(e.target.value) || 1))
           }
-          className="w-16 rounded-md border border-gray-300 px-2 py-1 disabled:bg-gray-50"
+          className="w-16 rounded-sm border-2 border-slate-200 bg-white px-2 py-1 font-mono text-[12px] text-slate-900 focus:border-[#1E3A8A] focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+          style={{ fontFamily: MONO_FAMILY }}
           aria-label="Random pick count"
         />
-        <label className="flex items-center gap-1">
+        <label
+          className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-700"
+          style={{ fontFamily: MONO_FAMILY }}
+        >
           <input
             type="checkbox"
             checked={shuffleOptions}
             onChange={(e) => setShuffleOptions(e.target.checked)}
+            className="h-3.5 w-3.5 accent-[#1E3A8A]"
           />
-          Shuffle options
+          SHUFFLE OPTIONS
         </label>
-        <label className="flex items-center gap-1" title="Single/judge reveal the moment you pick (no Check button); multiple-choice still needs Submit. Both modes score and feed the wrong set.">
+        <label
+          className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-700"
+          title="Single/judge reveal the moment you pick (no Check button); multiple-choice still needs Submit. Both modes score and feed the wrong set."
+          style={{ fontFamily: MONO_FAMILY }}
+        >
           <input
             type="checkbox"
             checked={fastMode}
             onChange={(e) => setFastMode(e.target.checked)}
+            className="h-3.5 w-3.5 accent-[#1E3A8A]"
           />
-          Fast mode
+          FAST MODE
         </label>
-        <div className="flex items-center gap-1">
-          <span className="text-gray-600">AI:</span>
-          <div className="flex overflow-hidden rounded-md border border-gray-300 text-xs">
+
+        <div className="flex items-center gap-1.5">
+          <span
+            className="font-mono text-[11px] uppercase tracking-wider text-slate-500"
+            style={{ fontFamily: MONO_FAMILY }}
+          >
+            AI:
+          </span>
+          <div className="inline-flex items-stretch overflow-hidden rounded-sm border border-slate-200">
             {(["off", "mixed", "ai"] as const).map((m) => (
               <button
                 key={m}
                 type="button"
                 onClick={() => setAiMode(m)}
                 className={
-                  "px-2 py-1 " +
+                  "px-2 py-1 font-mono text-[10.5px] uppercase tracking-wider transition-colors duration-120 " +
                   (aiMode === m
-                    ? "bg-slate-800 text-white"
-                    : "text-gray-600 hover:bg-gray-50")
+                    ? "bg-[#1E3A8A] text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50 hover:text-[#0B3B8C]")
                 }
+                style={{ fontFamily: MONO_FAMILY }}
               >
-                {m === "off" ? "Off" : m === "mixed" ? "Mixed" : "AI only"}
+                {m === "off" ? "OFF" : m === "mixed" ? "MIXED" : "AI ONLY"}
               </button>
             ))}
           </div>
@@ -621,25 +767,33 @@ export default function ReviewEntryPage() {
                 Math.min(10, Math.max(1, Number(e.target.value) || 1)),
               )
             }
-            className="w-14 rounded-md border border-gray-300 px-2 py-1 disabled:bg-gray-50"
+            className="w-14 rounded-sm border-2 border-slate-200 bg-white px-2 py-1 font-mono text-[12px] text-slate-900 focus:border-[#1E3A8A] focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+            style={{ fontFamily: MONO_FAMILY }}
             aria-label="AI question count"
           />
         </div>
+
         <button
           disabled={selected.size === 0 || busy}
           onClick={onSubmit}
-          className="ml-auto rounded-md bg-slate-800 px-4 py-2 font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+          className="ml-auto inline-flex items-center gap-2 rounded-sm border-2 border-[#1E3A8A] bg-[#1E3A8A] px-4 py-2 font-mono text-[12px] uppercase tracking-wider text-white transition-colors duration-120 hover:bg-[#0B3B8C] disabled:opacity-60"
+          style={{ fontFamily: MONO_FAMILY }}
         >
-          Submit · Start review →
+          <CornerDownLeft size={13} strokeWidth={1.5} />
+          <span>START REVIEW</span>
+          <span aria-hidden>→</span>
         </button>
       </div>
-      <p className="mt-2 text-xs text-gray-500">
+      <p
+        className="mt-2 font-mono text-[11px] text-slate-500"
+        style={{ fontFamily: MONO_FAMILY }}
+      >
         Fast mode: single/judge reveal the moment you pick (no Check
         button); multiple-choice still needs Submit. AI: seeds are the
         questions you ticked (≥1 needed); generated questions are{" "}
-        <strong>not</strong> saved to your bank automatically — use "Add
-        to question bank" during review. Your selection isn't saved
-        between visits.
+        <strong className="text-slate-700">not</strong> saved to your bank
+        automatically — use "Add to bank" during review. Your selection
+        isn't saved between visits.
       </p>
       <TagManageDrawer
         open={manageOpen}

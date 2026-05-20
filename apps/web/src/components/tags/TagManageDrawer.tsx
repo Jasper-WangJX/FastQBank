@@ -4,8 +4,12 @@
 // onChanged callback. Selection chips in the parent are kept in sync
 // only on close (deleted ids are filtered out then) — the drawer
 // itself doesn't read selectedIds.
+//
+// Visual: Sapphire Console — backdrop blur, sharp 2px panel, hairline
+// borders, icon-based row actions, mono labels.
 
 import { useEffect, useState } from "react";
+import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { ApiError } from "../../lib/api";
 import {
   createTag,
@@ -95,19 +99,30 @@ export default function TagManageDrawer({
       aria-label="Manage tags"
     >
       <div
-        className="flex-1 bg-black/30"
+        className="flex-1 bg-slate-900/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="flex h-full w-96 flex-col border-l border-gray-200 bg-white p-4 shadow-xl">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">Manage tags</h2>
+      <div className="flex h-full w-96 flex-col rounded-none border-l border-slate-200 bg-white p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+              [ TAGS ]
+            </div>
+            <h2 className="mt-0.5 text-base font-semibold tracking-tight text-[#0A2540]">
+              Manage tags
+            </h2>
+            <div className="mt-0.5 font-mono text-[11px] text-slate-500">
+              {tags.length} tag{tags.length === 1 ? "" : "s"} · rename · delete
+            </div>
+          </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+            title="Close"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-500 transition-colors duration-150 hover:border-[#2563EB] hover:text-[#0B3B8C]"
           >
-            ✕
+            <X size={14} strokeWidth={1.5} aria-hidden />
           </button>
         </div>
 
@@ -115,18 +130,18 @@ export default function TagManageDrawer({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search tags…"
-          className="mt-3 w-full rounded-md border border-gray-300 px-2 py-1 text-sm outline-none focus:border-slate-500"
+          className="mt-3 w-full rounded-sm border border-slate-200 bg-white px-2 py-1.5 font-mono text-[12px] text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#1E3A8A]"
         />
 
         {error && (
-          <p className="mt-2 rounded-md border border-red-400 bg-red-50 px-2 py-1 text-xs text-red-700">
-            {error}
+          <p className="mt-2 rounded-sm border border-[#DC2626]/40 bg-[#DC2626]/5 px-2 py-1 font-mono text-[11px] text-[#DC2626]">
+            [ ERROR ] · {error}
           </p>
         )}
 
-        <div className="mt-3 flex-1 overflow-y-auto rounded-md border border-gray-200">
+        <div className="mt-3 flex-1 overflow-y-auto rounded-sm border border-slate-200">
           {filtered.length === 0 ? (
-            <p className="px-2 py-2 text-xs text-gray-400">
+            <p className="px-2 py-2 font-mono text-[11px] text-slate-400">
               {tags.length === 0
                 ? "No tags yet — add one below."
                 : "No matching tags."}
@@ -137,7 +152,7 @@ export default function TagManageDrawer({
               return (
                 <div
                   key={t.id}
-                  className="flex items-center gap-2 border-b border-gray-100 px-2 py-1.5 text-sm last:border-b-0"
+                  className="flex items-center gap-2 border-b border-slate-100 px-2 py-1.5 text-sm last:border-b-0 hover:bg-[#EFF6FF]"
                 >
                   {isRenaming ? (
                     <>
@@ -145,7 +160,22 @@ export default function TagManageDrawer({
                         autoFocus
                         value={renameValue}
                         onChange={(e) => setRenameValue(e.target.value)}
-                        className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm outline-none focus:border-slate-500"
+                        onKeyDown={(e) => {
+                          // Enter = confirm rename (same gate as the
+                          // adjacent ✓ button: trimmed + not busy).
+                          if (
+                            e.key === "Enter" &&
+                            !busy &&
+                            renameValue.trim()
+                          ) {
+                            e.preventDefault();
+                            void run(async () => {
+                              await renameTag(t.id, renameValue.trim());
+                              setRenamingId(null);
+                            });
+                          }
+                        }}
+                        className="flex-1 rounded-sm border border-slate-200 bg-white px-2 py-1 font-mono text-[12px] text-slate-900 outline-none focus:border-[#1E3A8A]"
                       />
                       <button
                         type="button"
@@ -156,22 +186,28 @@ export default function TagManageDrawer({
                             setRenamingId(null);
                           })
                         }
-                        className="rounded-md bg-slate-800 px-2 py-1 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+                        aria-label="Save rename"
+                        title="Save"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-[#1E3A8A] bg-[#1E3A8A] text-white transition-colors duration-150 hover:bg-[#0B3B8C] disabled:opacity-50"
                       >
-                        Save
+                        <Check size={13} strokeWidth={1.5} aria-hidden />
                       </button>
                       <button
                         type="button"
                         disabled={busy}
                         onClick={() => setRenamingId(null)}
-                        className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                        aria-label="Cancel rename"
+                        title="Cancel"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-500 transition-colors duration-150 hover:border-[#2563EB] hover:text-[#0B3B8C] disabled:opacity-50"
                       >
-                        Cancel
+                        <X size={13} strokeWidth={1.5} aria-hidden />
                       </button>
                     </>
                   ) : (
                     <>
-                      <span className="flex-1 text-gray-800">{t.name}</span>
+                      <span className="flex-1 truncate font-mono text-[12px] text-slate-900">
+                        {t.name}
+                      </span>
                       <button
                         type="button"
                         disabled={busy}
@@ -181,9 +217,9 @@ export default function TagManageDrawer({
                           setRenamingId(t.id);
                           setRenameValue(t.name);
                         }}
-                        className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-500 transition-colors duration-150 hover:border-[#2563EB] hover:text-[#0B3B8C] disabled:opacity-50"
                       >
-                        ✎
+                        <Pencil size={13} strokeWidth={1.5} aria-hidden />
                       </button>
                       <button
                         type="button"
@@ -199,9 +235,9 @@ export default function TagManageDrawer({
                             run(() => deleteTag(t.id));
                           }
                         }}
-                        className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-500 transition-colors duration-150 hover:border-[#DC2626] hover:text-[#DC2626] disabled:opacity-50"
                       >
-                        🗑
+                        <Trash2 size={13} strokeWidth={1.5} aria-hidden />
                       </button>
                     </>
                   )}
@@ -215,8 +251,24 @@ export default function TagManageDrawer({
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter = create. Same gate as the adjacent CREATE button
+              // (trimmed, not busy, not a duplicate name).
+              if (
+                e.key === "Enter" &&
+                !busy &&
+                trimmedNew &&
+                !newDuplicate
+              ) {
+                e.preventDefault();
+                void run(async () => {
+                  await createTag({ name: trimmedNew });
+                  setNewName("");
+                });
+              }
+            }}
             placeholder="New tag name"
-            className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm outline-none focus:border-slate-500"
+            className="flex-1 rounded-sm border border-slate-200 bg-white px-2 py-1.5 font-mono text-[12px] text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#1E3A8A]"
           />
           <button
             type="button"
@@ -227,19 +279,16 @@ export default function TagManageDrawer({
                 setNewName("");
               })
             }
-            className="rounded-md border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:opacity-50"
-            title={
-              newDuplicate
-                ? "Tag already exists"
-                : undefined
-            }
+            className="inline-flex items-center gap-1.5 rounded-sm border border-[#1E3A8A] bg-[#1E3A8A] px-2.5 py-1.5 font-mono text-[11px] font-medium uppercase tracking-tight text-white transition-colors duration-150 hover:bg-[#0B3B8C] disabled:opacity-50 disabled:hover:bg-[#1E3A8A]"
+            title={newDuplicate ? "Tag already exists" : undefined}
           >
-            + Create
+            <Plus size={12} strokeWidth={1.5} aria-hidden />
+            Create
           </button>
         </div>
         {newDuplicate && (
-          <p className="mt-1 text-xs text-amber-700">
-            Tag already exists.
+          <p className="mt-1 font-mono text-[10.5px] text-slate-500">
+            [ INFO ] · tag already exists.
           </p>
         )}
       </div>

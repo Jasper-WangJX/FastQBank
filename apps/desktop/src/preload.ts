@@ -8,11 +8,11 @@
 
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
-type Listener = (payload: unknown) => void;
+type Listener<T = unknown> = (payload: T) => void;
 
 /** Subscribe to a main->renderer channel; returns an unsubscribe fn. */
-function sub(channel: string, cb: Listener): () => void {
-  const handler = (_e: IpcRendererEvent, payload: unknown) => cb(payload);
+function sub<T = unknown>(channel: string, cb: Listener<T>): () => void {
+  const handler = (_e: IpcRendererEvent, payload: T) => cb(payload);
   ipcRenderer.on(channel, handler);
   return () => ipcRenderer.removeListener(channel, handler);
 }
@@ -48,5 +48,16 @@ contextBridge.exposeInMainWorld("desktop", {
     selectRegion: (rect: RectCss) =>
       ipcRenderer.send("overlay:region-selected", rect),
     cancel: () => ipcRenderer.send("overlay:cancel"),
+  },
+
+  // Custom titlebar controls — the renderer paints the buttons, main
+  // does the actual win.minimize() / maximize() / close().
+  window: {
+    minimize: () => ipcRenderer.send("window:minimize"),
+    maximizeToggle: () => ipcRenderer.send("window:max-toggle"),
+    close: () => ipcRenderer.send("window:close"),
+    isMaximized: (): Promise<boolean> => ipcRenderer.invoke("window:is-maxed"),
+    onMaximizedChange: (cb: Listener<boolean>) =>
+      sub<boolean>("window:maximized", cb),
   },
 });

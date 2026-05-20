@@ -1,8 +1,27 @@
 // Paginated question bank with keyword (debounced) + multi-tag (AND/OR) filters.
 // LaTeX in stems is rendered inline. Row actions: edit / delete.
+//
+// Visual language: "Sapphire Console" (Variant E) — sharp 2px corners, mono
+// metadata, sapphire accent. Behavior is preserved from the previous layout;
+// only the visual layer changed.
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  LayoutGrid,
+  Link2,
+  List,
+  Pencil,
+  Plus,
+  Search,
+  Tag as TagIcon,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { ApiError } from "../lib/api";
 import {
   createShare,
@@ -24,6 +43,16 @@ import MySharesModal from "../components/share/MySharesModal";
 import { getDesktop } from "../lib/desktop";
 
 const PAGE_SIZE = 10;
+
+// Map QuestionListItem.type ("single" | "multi" | "judge") to a short
+// uppercase mono badge label. Strings are pure presentation — the underlying
+// type value is left untouched.
+function typeBadge(t: string): string {
+  if (t === "single") return "MCQ";
+  if (t === "multi") return "MULTI";
+  if (t === "judge") return "T/F";
+  return t.toUpperCase();
+}
 
 export default function QuestionListPage() {
   const navigate = useNavigate();
@@ -288,92 +317,206 @@ export default function QuestionListPage() {
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + PAGE_SIZE, total);
   const hasFilters = q !== "" || tagIds.length > 0;
+  const pages = total === 0 ? 1 : Math.ceil(total / PAGE_SIZE);
+  const currentPage = total === 0 ? 1 : Math.floor(offset / PAGE_SIZE) + 1;
 
+  // Sapphire-tinted accent for native checkboxes.
+  const checkboxClass =
+    "h-3.5 w-3.5 shrink-0 cursor-pointer accent-[#1E3A8A]";
+  // Shared ghost-button shell for header / pagination / bulk-bar buttons.
+  const ghostBtn =
+    "inline-flex h-8 items-center gap-1.5 rounded-sm border border-slate-200 px-2.5 text-xs text-slate-700 transition-colors duration-150 hover:border-[#1E3A8A] hover:text-[#1E3A8A] disabled:opacity-50 disabled:cursor-not-allowed";
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Question bank</h1>
-        <div className="flex gap-2">
+    <div className="rounded-sm border border-slate-200 bg-white p-5">
+      {/* Page-local keyframes: blinking caret + row fade-in stagger. */}
+      <style>{`
+        @keyframes fqb-blink-q {
+          0%, 49% { opacity: 1; }
+          50%, 100% { opacity: 0; }
+        }
+        @keyframes fqb-fadein {
+          from { opacity: 0; transform: translateY(2px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .fqb-caret { animation: fqb-blink-q 1.05s steps(2, end) infinite; }
+        .fqb-row   { animation: fqb-fadein 220ms ease-out both; }
+        @media (prefers-reduced-motion: reduce) {
+          .fqb-caret, .fqb-row { animation: none !important; }
+        }
+      `}</style>
+
+      {/* ====================================================================
+          Title row
+          ==================================================================== */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-mono uppercase tracking-[0.18em] text-[10px] text-slate-500">
+            MODULE / QUESTION-BANK
+          </div>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
+            Question bank
+          </h1>
+          <div className="mt-1 font-mono text-[11.5px] text-slate-500">
+            &gt; {total} records indexed · {selected.size} selected
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           {getDesktop() && (
             <button
+              type="button"
               onClick={() => getDesktop()?.ocr.trigger()}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               title="Screenshot a question on screen and import it via OCR"
+              className={ghostBtn}
             >
-              OCR capture
+              <Camera size={14} strokeWidth={1.5} />
+              <span className="font-mono text-[11px] uppercase tracking-[0.08em]">
+                OCR
+              </span>
             </button>
           )}
           <button
+            type="button"
             onClick={() => setImportOpen(true)}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            title="Import questions from file"
+            className={ghostBtn}
           >
-            Import
+            <Upload size={14} strokeWidth={1.5} />
+            <span className="font-mono text-[11px] uppercase tracking-[0.08em]">
+              IMPORT
+            </span>
           </button>
           <button
+            type="button"
             onClick={() => setMySharesOpen(true)}
-            className="rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:underline"
+            title="My shares"
+            className={ghostBtn}
           >
-            My shares
+            <Link2 size={14} strokeWidth={1.5} />
+            <span className="font-mono text-[11px] uppercase tracking-[0.08em]">
+              SHARES
+            </span>
           </button>
+
+          {/* Primary CTA */}
           <button
+            type="button"
             onClick={() => navigate("/questions/new")}
-            className="rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            className="inline-flex h-8 items-center gap-2 rounded-sm border border-[#1E3A8A] bg-[#1E3A8A] px-3 text-xs font-medium text-white transition-colors duration-150 hover:bg-[#2563EB]"
           >
-            + New question
+            <Plus size={14} strokeWidth={1.5} />
+            <span className="font-mono uppercase tracking-[0.08em]">
+              NEW QUESTION
+            </span>
+            <span className="inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-sm border border-white/40 bg-white/10 px-1 font-mono text-[10px] leading-none text-white">
+              N
+            </span>
           </button>
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <input
-          placeholder="Search stem…"
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setOffset(0);
-          }}
-          className="w-64 rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
-        />
+      {/* ====================================================================
+          Filter "command line"
+          ==================================================================== */}
+      <div className="mt-5 flex flex-wrap items-stretch gap-2">
+        {/* Search input — sharp-cornered, leading ›, blinking caret. */}
+        <label
+          htmlFor="qb-search"
+          className="group flex h-9 min-w-[280px] flex-1 items-center gap-2 rounded-sm border border-slate-200 bg-white px-2.5 transition-colors duration-150 focus-within:border-[#1E3A8A] hover:border-[#2563EB]"
+        >
+          <span className="font-mono text-[13px] font-medium text-[#0B3B8C] select-none">
+            ›
+          </span>
+          <span
+            aria-hidden
+            className="fqb-caret inline-block h-[14px] w-[6px] shrink-0"
+            style={{ backgroundColor: "#60A5FA" }}
+          />
+          <input
+            id="qb-search"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setOffset(0);
+            }}
+            placeholder="Search stem…"
+            className="min-w-0 flex-1 border-0 bg-transparent font-mono text-[12.5px] text-slate-900 outline-none placeholder:text-slate-400"
+          />
+          {q !== "" && (
+            <button
+              type="button"
+              onClick={() => {
+                setQ("");
+                setOffset(0);
+              }}
+              title="Clear search"
+              aria-label="Clear search"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-400 transition-colors duration-150 hover:text-[#1E3A8A]"
+            >
+              <X size={12} strokeWidth={1.5} />
+            </button>
+          )}
+          <Search
+            size={12}
+            strokeWidth={1.5}
+            className="text-slate-400 group-focus-within:text-[#1E3A8A]"
+          />
+        </label>
+
         {hasFilters && (
           <button
+            type="button"
             onClick={() => {
               setQ("");
               setTagIds([]);
               setOffset(0);
             }}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+            className={ghostBtn}
           >
-            Clear filters
+            <X size={12} strokeWidth={1.5} />
+            <span className="font-mono uppercase tracking-[0.08em] text-[11px]">
+              CLEAR FILTERS
+            </span>
           </button>
         )}
-        <div className="ml-auto flex overflow-hidden rounded-md border border-gray-300 text-sm">
+
+        {/* View toggle — single hairline shell, two icon buttons. */}
+        <div className="ml-auto flex items-stretch rounded-sm border border-slate-200 bg-white">
           <button
+            type="button"
             onClick={() => setView("list")}
+            aria-label="List view"
+            title="List view"
             className={
-              "px-3 py-2 " +
+              "flex h-[34px] w-9 items-center justify-center transition-colors duration-150 " +
               (view === "list"
-                ? "bg-slate-800 text-white"
-                : "text-gray-600 hover:bg-gray-50")
+                ? "bg-[#1E3A8A] text-white"
+                : "text-slate-500 hover:text-[#1E3A8A]")
             }
           >
-            List
+            <List size={14} strokeWidth={1.5} />
           </button>
+          <div className="w-px self-stretch bg-slate-200" />
           <button
+            type="button"
             onClick={() => setView("cards")}
+            aria-label="Card view"
+            title="Card view"
             className={
-              "px-3 py-2 " +
+              "flex h-[34px] w-9 items-center justify-center transition-colors duration-150 " +
               (view === "cards"
-                ? "bg-slate-800 text-white"
-                : "text-gray-600 hover:bg-gray-50")
+                ? "bg-[#1E3A8A] text-white"
+                : "text-slate-500 hover:text-[#1E3A8A]")
             }
           >
-            Cards
+            <LayoutGrid size={14} strokeWidth={1.5} />
           </button>
         </div>
       </div>
 
-      {/* Tag filter + management */}
+      {/* ====================================================================
+          Tag filter + management
+          ==================================================================== */}
       <div className="mt-3">
         <TagFilter
           tags={tags}
@@ -391,57 +534,83 @@ export default function QuestionListPage() {
         />
       </div>
 
-      {/* Stage-9: bulk action bar */}
+      {/* ====================================================================
+          Bulk action bar
+          ==================================================================== */}
       {selected.size >= 1 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2">
-          <span className="text-sm font-medium text-slate-700">
-            {selected.size} selected
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-sm border border-[#DBEAFE] bg-[#EFF6FF] px-3 py-2">
+          <span className="font-mono text-[11.5px] font-semibold text-[#1E3A8A]">
+            [ {selected.size} SELECTED ]
           </span>
+          <span className="mx-1 h-4 w-px bg-[#DBEAFE]" />
+
           <button
-            onClick={clearSelection}
-            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs hover:bg-gray-50"
-          >
-            Clear
-          </button>
-          <span className="ml-2 h-4 w-px bg-gray-300" />
-          <button
+            type="button"
             disabled={busy}
             onClick={onBulkDelete}
-            className="rounded-md border border-red-300 bg-white px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+            title="Bulk delete"
+            className="group inline-flex h-7 items-center gap-1 rounded-sm border border-slate-200 bg-white px-2 text-[11px] text-slate-700 transition-colors duration-150 hover:border-[#DC2626] hover:text-[#DC2626] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Bulk delete
+            <Trash2 size={12} strokeWidth={1.5} />
+            <span className="font-mono text-[11px] uppercase tracking-[0.08em]">
+              DELETE
+            </span>
           </button>
+
           <button
+            type="button"
             disabled={busy}
             onClick={() => setBulkTagOpen(true)}
-            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+            title="Add tag"
+            className="group inline-flex h-7 items-center gap-1 rounded-sm border border-slate-200 bg-white px-2 text-[11px] text-slate-700 transition-colors duration-150 hover:border-[#1E3A8A] hover:text-[#1E3A8A] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Add tag
+            <TagIcon size={12} strokeWidth={1.5} />
+            <span className="font-mono text-[11px] uppercase tracking-[0.08em]">
+              ADD TAG
+            </span>
           </button>
+
           <button
+            type="button"
             disabled={busy || selected.size > 99}
             onClick={onBundle}
             title={
               selected.size > 99
                 ? "Bundle is capped at 99 questions per link"
-                : undefined
+                : "Bundle as link"
             }
-            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+            className="group inline-flex h-7 items-center gap-1 rounded-sm border border-slate-200 bg-white px-2 text-[11px] text-slate-700 transition-colors duration-150 hover:border-[#1E3A8A] hover:text-[#1E3A8A] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Bundle as link
+            <Link2 size={12} strokeWidth={1.5} />
+            <span className="font-mono text-[11px] uppercase tracking-[0.08em]">
+              BUNDLE
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={clearSelection}
+            title="Clear selection"
+            className="group inline-flex h-7 items-center gap-1 rounded-sm border border-slate-200 bg-white px-2 text-[11px] text-slate-700 transition-colors duration-150 hover:border-[#1E3A8A] hover:text-[#1E3A8A]"
+          >
+            <X size={12} strokeWidth={1.5} />
+            <span className="font-mono text-[11px] uppercase tracking-[0.08em]">
+              CLEAR
+            </span>
           </button>
         </div>
       )}
 
-      {/* Stage-9: "select all filtered" prompt — shown only when the
-          current page is fully selected AND the global Set is still
-          smaller than the total match count. */}
+      {/* ====================================================================
+          "Select all filtered" prompt
+          ==================================================================== */}
       {pageAllSelected && selected.size < total && (
-        <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+        <div className="mt-2 rounded-sm border border-[#DBEAFE] bg-[#EFF6FF] px-3 py-2 font-mono text-[11.5px] text-[#1E3A8A]">
           Selected {selected.size} on this page.{" "}
           <button
+            type="button"
             onClick={selectAllFiltered}
-            className="font-medium underline hover:no-underline"
+            className="font-semibold text-[#1E3A8A] underline underline-offset-2 hover:no-underline"
           >
             Select all {total} matching
           </button>
@@ -449,151 +618,280 @@ export default function QuestionListPage() {
       )}
 
       {error && (
-        <div className="mt-4 rounded-md border border-red-400 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {error}
+        <div className="mt-4 rounded-sm border border-red-300 bg-red-50 px-3 py-2 font-mono text-xs text-red-700">
+          [ ERR ] {error}
         </div>
       )}
 
-      {/* List */}
+      {/* ====================================================================
+          List / Cards body
+          ==================================================================== */}
       <div className="mt-5">
         {data === null ? (
-          <p className="text-sm text-gray-500">Loading…</p>
+          <p className="font-mono text-xs text-slate-500">
+            &gt; awaiting response
+            <span
+              aria-hidden
+              className="fqb-caret ml-1 inline-block h-[12px] w-[6px] align-middle"
+              style={{ backgroundColor: "#60A5FA" }}
+            />
+          </p>
         ) : items.length === 0 ? (
-          <p className="text-sm text-gray-500">
+          <p className="font-mono text-xs text-slate-500">
             {hasFilters
-              ? "No questions match these filters."
-              : "No questions yet. Create your first one."}
+              ? "> no questions match these filters."
+              : "> no questions yet. press N to create the first one."}
           </p>
         ) : view === "cards" ? (
-          <QuestionCardGrid>
-            {items.map((qq) => (
-              <QuestionCard
-                key={qq.id}
-                question={qq}
-                selectControl={
-                  <input
-                    type="checkbox"
-                    checked={selected.has(qq.id)}
-                    onChange={() => toggleOne(qq.id)}
-                    title="Select this question"
-                    className="h-4 w-4"
-                  />
-                }
-                actions={
-                  <>
-                    <button
-                      disabled={busy}
-                      onClick={() => navigate(`/questions/${qq.id}/edit`)}
-                      className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => onDelete(qq.id, qq.stem)}
-                      className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
-                    >
-                      Delete
-                    </button>
-                  </>
-                }
-              />
-            ))}
-          </QuestionCardGrid>
-        ) : (
-          <div className="divide-y divide-gray-100 rounded-md border border-gray-200">
-            <div className="flex items-center gap-3 bg-gray-50 px-3 py-2">
+          <>
+            {/* Page-level select-all strip — parity with the list view's
+                header row, just rendered above the grid. */}
+            <div
+              className="mb-3 flex items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-slate-500"
+            >
               <input
                 type="checkbox"
                 checked={pageAllSelected}
                 ref={(el) => {
-                  if (el) el.indeterminate = !pageAllSelected && pageSomeSelected;
+                  if (el)
+                    el.indeterminate =
+                      !pageAllSelected && pageSomeSelected;
                 }}
                 onChange={togglePageAll}
                 title="Select this page"
-                className="h-4 w-4"
+                aria-label="Select this page"
+                className={checkboxClass}
               />
-              <span className="text-xs text-gray-500">
+              <span>
                 {pageSomeSelected
-                  ? `${pageIds.filter((id) => selected.has(id)).length} of ${pageIds.length} on this page selected`
+                  ? `${pageIds.filter((id) => selected.has(id)).length} of ${pageIds.length} on this page`
                   : "Select page"}
               </span>
             </div>
-            {items.map((qq) => (
-              <div
-                key={qq.id}
-                className="flex items-start gap-3 px-3 py-3"
-              >
+            <QuestionCardGrid>
+              {items.map((qq) => (
+                <QuestionCard
+                  key={qq.id}
+                  question={qq}
+                  selectControl={
+                    <input
+                      type="checkbox"
+                      checked={selected.has(qq.id)}
+                      onChange={() => toggleOne(qq.id)}
+                      title="Select this question"
+                      className={checkboxClass}
+                    />
+                  }
+                  actions={
+                    <>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => navigate(`/questions/${qq.id}/edit`)}
+                        title="Edit"
+                        aria-label="Edit"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 transition-colors duration-150 hover:border-[#1E3A8A] hover:text-[#1E3A8A] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Pencil size={12} strokeWidth={1.5} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => onDelete(qq.id, qq.stem)}
+                        title="Delete"
+                        aria-label="Delete"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 transition-colors duration-150 hover:border-[#DC2626] hover:text-[#DC2626] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trash2 size={12} strokeWidth={1.5} />
+                      </button>
+                    </>
+                  }
+                />
+              ))}
+            </QuestionCardGrid>
+          </>
+        ) : (
+          <div className="overflow-hidden rounded-sm border border-slate-200">
+            {/* Header row */}
+            <div
+              className="grid items-center gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 font-mono uppercase tracking-[0.12em] text-[10px] text-slate-500"
+              style={{
+                gridTemplateColumns:
+                  "24px 44px 72px minmax(0, 1fr) 60px 180px 120px 60px",
+              }}
+            >
+              <span className="flex items-center justify-center">
                 <input
                   type="checkbox"
-                  checked={selected.has(qq.id)}
-                  onChange={() => toggleOne(qq.id)}
-                  title="Select this question"
-                  className="mt-1 h-4 w-4 shrink-0"
+                  checked={pageAllSelected}
+                  ref={(el) => {
+                    if (el)
+                      el.indeterminate =
+                        !pageAllSelected && pageSomeSelected;
+                  }}
+                  onChange={togglePageAll}
+                  title="Select this page"
+                  aria-label="Select this page"
+                  className={checkboxClass}
                 />
-                <div className="min-w-0 flex-1">
-                  <Latex
-                    text={qq.stem}
-                    className="line-clamp-2 block text-sm text-gray-800"
-                  />
-                  <div className="mt-1 flex flex-wrap items-center gap-1">
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700">
-                      {qq.type}
+              </span>
+              <span>IDX</span>
+              <span>ID</span>
+              <span>STEM</span>
+              <span>TYPE</span>
+              <span>TAGS</span>
+              <span>UPDATED</span>
+              <span className="text-right">ACTIONS</span>
+            </div>
+
+            <ul className="divide-y divide-slate-100">
+              {items.map((qq, i) => {
+                const idx = String(offset + i + 1).padStart(4, "0");
+                const shortId = `Q-${qq.id.slice(0, 6)}`;
+                const visibleTags = qq.tags.slice(0, 2);
+                const overflow = qq.tags.length - visibleTags.length;
+                return (
+                  <li
+                    key={qq.id}
+                    className="fqb-row group relative grid items-center gap-3 px-3 py-2.5 transition-colors duration-150 hover:bg-[#EFF6FF] before:absolute before:inset-y-0 before:left-0 before:w-[2px] before:bg-[#1E3A8A] before:opacity-0 group-hover:before:opacity-100"
+                    style={{
+                      gridTemplateColumns:
+                        "24px 44px 72px minmax(0, 1fr) 60px 180px 120px 60px",
+                      animationDelay: `${i * 10}ms`,
+                    }}
+                  >
+                    {/* Decorative hover bar — uses a sibling span so that
+                        Tailwind's `group-hover:before:opacity-100` actually
+                        applies (the `before:` on the <li> is the same
+                        element that hovers — left as belt-and-braces). */}
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-y-0 left-0 w-[2px] bg-[#1E3A8A] opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+                    />
+
+                    {/* Checkbox */}
+                    <span className="flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={selected.has(qq.id)}
+                        onChange={() => toggleOne(qq.id)}
+                        title="Select this question"
+                        aria-label="Select this question"
+                        className={checkboxClass}
+                      />
                     </span>
-                    {qq.tags.map((t) => (
-                      <span
-                        key={t.id}
-                        className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600"
-                      >
-                        {t.name}
+
+                    {/* IDX gutter */}
+                    <span className="font-mono text-[11px] tabular-nums text-slate-400 group-hover:text-[#0B3B8C]">
+                      {idx}
+                    </span>
+
+                    {/* Short ID */}
+                    <span className="truncate font-mono text-[11.5px] font-medium text-[#0B3B8C]">
+                      {shortId}
+                    </span>
+
+                    {/* Stem */}
+                    <Latex
+                      text={qq.stem}
+                      className="line-clamp-1 min-w-0 text-sm text-slate-800"
+                    />
+
+                    {/* Type chip */}
+                    <span>
+                      <span className="inline-flex h-[20px] items-center rounded-sm border border-slate-200 bg-slate-50 px-1.5 font-mono text-[10.5px] uppercase tracking-tight text-slate-600">
+                        {typeBadge(qq.type)}
                       </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    disabled={busy}
-                    onClick={() => navigate(`/questions/${qq.id}/edit`)}
-                    className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    disabled={busy}
-                    onClick={() => onDelete(qq.id, qq.stem)}
-                    className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
+                    </span>
+
+                    {/* Tags */}
+                    <span className="flex min-w-0 items-center gap-1 overflow-hidden">
+                      {visibleTags.map((t) => (
+                        <span
+                          key={t.id}
+                          className="inline-flex h-[20px] max-w-[80px] items-center truncate rounded-sm border border-[#0B3B8C]/15 bg-[#DBEAFE] px-1.5 font-mono text-[10.5px] tracking-tight text-[#0B3B8C]"
+                          title={t.name}
+                        >
+                          {t.name}
+                        </span>
+                      ))}
+                      {overflow > 0 && (
+                        <span className="font-mono text-[10.5px] text-slate-400">
+                          +{overflow}
+                        </span>
+                      )}
+                    </span>
+
+                    {/* Updated — list shape has no timestamp, render em-dash */}
+                    <span className="font-mono text-[11px] text-slate-400">
+                      —
+                    </span>
+
+                    {/* Actions */}
+                    <span className="flex items-center justify-end gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => navigate(`/questions/${qq.id}/edit`)}
+                        title="Edit"
+                        aria-label="Edit"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 transition-colors duration-150 hover:border-[#1E3A8A] hover:text-[#1E3A8A] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Pencil size={12} strokeWidth={1.5} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => onDelete(qq.id, qq.stem)}
+                        title="Delete"
+                        aria-label="Delete"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-600 transition-colors duration-150 hover:border-[#DC2626] hover:text-[#DC2626] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trash2 size={12} strokeWidth={1.5} />
+                      </button>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         )}
       </div>
 
-      {/* Pagination */}
-      <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-        <span>
-          {from}–{to} of {total}
+      {/* ====================================================================
+          Pagination
+          ==================================================================== */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <span className="font-mono text-[11.5px] text-slate-500">
+          PAGE {currentPage}/{pages} — {from}..{to} of {total}
         </span>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <button
+            type="button"
             disabled={offset === 0}
             onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
-            className="rounded-md border border-gray-300 px-3 py-1.5 hover:bg-gray-50 disabled:opacity-50"
+            aria-label="Previous page"
+            title="Previous page"
+            className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2 text-slate-600 transition-colors duration-150 hover:border-[#1E3A8A] hover:text-[#1E3A8A] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Prev
+            <ChevronLeft size={14} strokeWidth={1.5} />
           </button>
           <button
+            type="button"
             disabled={offset + PAGE_SIZE >= total}
             onClick={() => setOffset((o) => o + PAGE_SIZE)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 hover:bg-gray-50 disabled:opacity-50"
+            aria-label="Next page"
+            title="Next page"
+            className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2 text-slate-600 transition-colors duration-150 hover:border-[#1E3A8A] hover:text-[#1E3A8A] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Next
+            <ChevronRight size={14} strokeWidth={1.5} />
           </button>
         </div>
       </div>
+
+      {/* ====================================================================
+          Modals (unchanged behavior)
+          ==================================================================== */}
       <TagManageDrawer
         open={manageOpen}
         onClose={async () => {
@@ -643,9 +941,12 @@ export default function QuestionListPage() {
           }}
         />
       )}
+
+      {/* Toast — sharp 2px corners, sapphire-active background, mono.
+          `bottom-10` keeps it clear of the 28px sticky status footer. */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-md bg-slate-800 px-4 py-2 text-sm text-white shadow-lg">
-          {toast}
+        <div className="fixed bottom-10 right-6 z-50 rounded-sm border border-[#1E40AF] bg-[#1E3A8A] px-3 py-2 font-mono text-xs text-white shadow-lg">
+          [ OK ] {toast}
         </div>
       )}
     </div>

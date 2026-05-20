@@ -54,7 +54,7 @@ export default function HealthCheck() {
       <div
         className={`rounded-xl border px-6 py-5 shadow-sm w-[420px] ${styles[status]}`}
       >
-        <h1 className="text-lg font-semibold">AI Question Bank</h1>
+        <h1 className="text-lg font-semibold">FastQBank</h1>
         <p className="mt-1 text-sm opacity-80">Stage 0 — health check</p>
 
         <div className="mt-4 flex items-center gap-2">

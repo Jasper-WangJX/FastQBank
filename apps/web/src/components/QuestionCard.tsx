@@ -1,9 +1,12 @@
 // A question rendered as a compact card: stem on top (LaTeX, clamped),
-// options below (each clamped; the list is capped with a "+N more…"),
+// options below (each clamped; the list is capped with a "+N more"),
 // and a caller-supplied actions row at the bottom. QuestionCardGrid lays
 // cards out responsively (N per row by viewport width); the caller keeps
 // the page size unchanged. Used by the Question Bank and the review
 // picker (different `actions`).
+//
+// Visual: "Sapphire Console" — sharp 2px corners, hairline slate-200
+// borders, sapphire chips, monospace metadata, no shadows.
 
 import type { ReactNode } from "react";
 import type { Question } from "../lib/qbank";
@@ -27,34 +30,36 @@ export function QuestionCard({
   const shown = question.options.slice(0, MAX_OPTIONS_SHOWN);
   const extra = question.options.length - shown.length;
   return (
-    <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+    <div className="group flex h-full flex-col rounded-sm border border-slate-200 bg-white p-3 transition-colors duration-150 hover:border-[#1E3A8A]">
       {selectControl !== undefined ? (
         <div className="flex items-start gap-2">
           <div className="mt-0.5 shrink-0">{selectControl}</div>
           <Latex
             text={question.stem}
-            className="line-clamp-3 block flex-1 text-sm font-medium text-gray-800"
+            className="line-clamp-3 block flex-1 text-sm font-medium text-slate-900"
           />
         </div>
       ) : (
         <Latex
           text={question.stem}
-          className="line-clamp-3 block text-sm font-medium text-gray-800"
+          className="line-clamp-3 block text-sm font-medium text-slate-900"
         />
       )}
-      <ul className="mt-2 flex-1 space-y-0.5">
+      <ul className="mt-2 flex-1 space-y-0.5 font-mono text-xs text-slate-600">
         {shown.map((o) => (
-          <li key={o.label} className="flex gap-1 text-xs text-gray-600">
-            <span className="shrink-0 font-medium">{o.label}.</span>
+          <li key={o.label} className="flex gap-1">
+            <span className="shrink-0 font-medium text-[#0B3B8C]">
+              {o.label}.
+            </span>
             <Latex text={o.content} className="line-clamp-1 block" />
           </li>
         ))}
         {extra > 0 && (
-          <li className="text-xs text-gray-400">+{extra} more…</li>
+          <li className="font-mono text-xs text-slate-400">+{extra} more</li>
         )}
       </ul>
       <div className="mt-2 flex items-center gap-2">
-        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-700">
+        <span className="inline-flex h-[20px] items-center rounded-sm border border-[#0B3B8C]/15 bg-[#DBEAFE] px-1.5 font-mono text-[10.5px] font-medium uppercase tracking-tight text-[#1E3A8A]">
           {question.type}
         </span>
         <div className="ml-auto flex items-center gap-1">{actions}</div>

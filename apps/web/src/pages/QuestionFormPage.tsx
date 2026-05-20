@@ -1,9 +1,21 @@
 // Create / edit a question. One component, two modes (presence of :id).
 // Client-side rules mirror the backend QuestionIn validator, but the
 // server's 422 is the source of truth and is surfaced in the error box.
+//
+// Visual layer: "Sapphire Console" (Variant E). Sharp 2px corners, mono
+// metadata, sapphire palette. Behavior is unchanged from the previous
+// implementation — only Tailwind classes and decorative markup move.
 
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  ChevronDown,
+  CornerDownLeft,
+  Lightbulb,
+  Plus,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { ApiError } from "../lib/api";
 import {
   createQuestion,
@@ -28,6 +40,17 @@ const JUDGE_OPTIONS: Option[] = [
   { label: "T", content: "True" },
   { label: "F", content: "False" },
 ];
+
+// Shared style fragments — keeps the class soup deduplicated.
+const MONO_FONT =
+  "ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace";
+const SANS_FONT = "ui-sans-serif, Inter, system-ui, sans-serif";
+const EYEBROW_CLS =
+  "font-mono uppercase tracking-[0.18em] text-[10px] text-slate-500";
+const LABEL_CLS =
+  "block font-mono uppercase tracking-[0.1em] text-[11px] text-slate-500";
+const INPUT_CLS =
+  "w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-900 placeholder:text-slate-400 outline-none transition-colors duration-120 focus:border-[#1E3A8A]";
 
 // Smallest unused A.. letter, so deletes leave gaps but labels stay stable.
 function nextLabel(opts: Option[]): string {
@@ -283,251 +306,506 @@ export default function QuestionFormPage() {
     }
   }
 
+  // ─── Loading state ──────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <p className="text-sm text-gray-500">Loading…</p>
-      </div>
+      <>
+        <style>{`
+          @keyframes qfp-blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+          .qfp-caret { animation: qfp-blink 1.05s steps(2, end) infinite; display: inline-block; }
+          @media (prefers-reduced-motion: reduce) {
+            .qfp-caret { animation: none !important; }
+          }
+        `}</style>
+        <div
+          className="rounded-sm border border-slate-200 bg-white p-5"
+          style={{ fontFamily: SANS_FONT }}
+        >
+          <p
+            className="text-[12px] text-slate-600"
+            style={{ fontFamily: MONO_FONT }}
+          >
+            &gt; awaiting response&hellip;
+            <span
+              aria-hidden
+              className="qfp-caret ml-1 inline-block h-[12px] w-[6px] align-middle"
+              style={{ backgroundColor: "#60A5FA" }}
+            />
+          </p>
+        </div>
+      </>
     );
   }
 
   const isJudge = type === "judge";
+  const showImproveCTA =
+    ocrPrefill?.imageB64 &&
+    (!ocrPrefill.matched || looksLikeFormula(stem));
+  const submitLabel = submitting
+    ? "PERSISTING…"
+    : isEdit
+      ? "↵ SAVE CHANGES"
+      : "↵ CREATE";
 
   return (
-    <form
-      onSubmit={onSubmit}
-      className="grid grid-cols-1 gap-4 lg:grid-cols-2"
-    >
-      {/* Editor */}
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h1 className="text-lg font-semibold">
-          {isEdit ? "Edit question" : "New question"}
-        </h1>
+    <>
+      {/* Single keyframe block — caret blink + reduced-motion guard. */}
+      <style>{`
+        @keyframes qfp-blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+        .qfp-caret { animation: qfp-blink 1.05s steps(2, end) infinite; display: inline-block; }
+        @media (prefers-reduced-motion: reduce) {
+          .qfp-caret { animation: none !important; }
+        }
+      `}</style>
 
-        {source === "ocr" && (
-          <div className="mt-3 rounded-md border border-sky-300 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-            Draft from OCR — review every field before saving.
-            {ocrPrefill && !ocrPrefill.matched && !improvedByAi && (
-              <span className="mt-1 block text-amber-700">
-                Couldn&apos;t auto-split the options — separate them
-                manually, or click <strong>Improve with AI</strong> below.
-              </span>
-            )}
-            {improvedByAi && (
-              <span className="mt-1 block text-emerald-700">
-                Reparsed with AI — verify the options &amp; LaTeX, then
-                pick the answer.
-              </span>
-            )}
-          </div>
-        )}
-
-        <label className="mt-4 block text-sm font-medium text-gray-700">
-          Type
-        </label>
-        <select
-          value={type}
-          onChange={(e) => changeType(e.target.value as QuestionType)}
-          className="mt-1 rounded-md border border-gray-300 px-2 py-2 text-sm"
-        >
-          <option value="single">Single choice</option>
-          <option value="multi">Multiple choice</option>
-          <option value="judge">Judge (True / False)</option>
-        </select>
-
-        <label className="mt-4 block text-sm font-medium text-gray-700">
-          Stem (LaTeX with $…$)
-        </label>
-        <textarea
-          value={stem}
-          onChange={(e) => setStem(e.target.value)}
-          rows={3}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
-          placeholder="e.g. The derivative of $x^2$ is …"
-        />
-
-        <div className="mt-4 flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700">
-            Options{" "}
-            <span className="font-normal text-gray-400">
-              ({isJudge ? "radio" : type === "multi" ? "checkbox" : "radio"}{" "}
-              = correct)
-            </span>
-          </span>
-          {!isJudge && (
-            <button
-              type="button"
-              onClick={addOption}
-              className="rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+      <form
+        onSubmit={onSubmit}
+        className="grid grid-cols-1 gap-4 lg:grid-cols-2"
+        style={{ fontFamily: SANS_FONT }}
+      >
+        {/* ============================================================
+            EDITOR PANEL
+            ============================================================ */}
+        <div className="rounded-sm border border-slate-200 bg-white p-5">
+          {/* Eyebrow + title + mono subtitle */}
+          <div>
+            <div className={EYEBROW_CLS} style={{ fontFamily: MONO_FONT }}>
+              MODULE / QUESTION
+            </div>
+            <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-[#0A2540]">
+              {isEdit ? "Edit question" : "New question"}
+            </h1>
+            <div
+              className="mt-1 font-mono text-[11.5px] text-slate-600"
+              style={{ fontFamily: MONO_FONT }}
             >
-              + Option
-            </button>
-          )}
-        </div>
+              {isEdit && id
+                ? `editing record Q-${id.slice(0, 6)}`
+                : "awaiting first save"}
+            </div>
+          </div>
 
-        <div className="mt-2 space-y-2">
-          {options.map((o) => (
-            <div key={o.label} className="flex items-center gap-2">
-              <input
-                type={type === "multi" ? "checkbox" : "radio"}
-                name="correct"
-                checked={correct.includes(o.label)}
-                onChange={() => toggleCorrect(o.label)}
-                aria-label={`Mark ${o.label} correct`}
-              />
-              <span className="w-5 text-sm font-medium text-gray-600">
-                {o.label}
+          {/* OCR-draft notice — sapphire-50 panel, sharp 2px corners */}
+          {source === "ocr" && (
+            <div
+              className="mt-4 rounded-sm border border-[#1E3A8A]/15 bg-[#EFF6FF] px-3 py-2 text-[12px] text-[#0A2540]"
+            >
+              <span
+                className="font-mono text-[#0B3B8C]"
+                style={{ fontFamily: MONO_FONT }}
+              >
+                [ OCR-DRAFT ]
               </span>
-              <input
-                value={o.content}
-                onChange={(e) => setOptionContent(o.label, e.target.value)}
-                disabled={isJudge}
-                className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm outline-none focus:border-slate-500 disabled:bg-gray-50"
-                placeholder="Option content (LaTeX ok)"
-              />
-              {!isJudge && options.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeOption(o.label)}
-                  className="rounded-md border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+              <span
+                className="mx-1 font-mono text-slate-400"
+                style={{ fontFamily: MONO_FONT }}
+              >
+                ·
+              </span>
+              <span>Draft from OCR — review every field before saving.</span>
+              {ocrPrefill && !ocrPrefill.matched && !improvedByAi && (
+                <span
+                  className="mt-1 block font-mono text-[11.5px] text-slate-600"
+                  style={{ fontFamily: MONO_FONT }}
                 >
-                  ✕
-                </button>
+                  <span aria-hidden className="mr-1">⚠</span>
+                  Couldn&apos;t auto-split the options — separate them
+                  manually, or click{" "}
+                  <span className="text-[#0B3B8C]">Improve with AI</span>{" "}
+                  below.
+                </span>
+              )}
+              {improvedByAi && (
+                <span
+                  className="mt-1 block font-mono text-[11.5px] text-[#1E3A8A]"
+                  style={{ fontFamily: MONO_FONT }}
+                >
+                  Reparsed with AI — verify the options &amp; LaTeX, then
+                  pick the answer.
+                </span>
               )}
             </div>
-          ))}
-        </div>
+          )}
 
-        <label className="mt-4 block text-sm font-medium text-gray-700">
-          Knowledge summary (optional)
-        </label>
-        <textarea
-          value={knowledgeSummary}
-          onChange={(e) => setKnowledgeSummary(e.target.value)}
-          rows={2}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
-        />
+          {/* Type select with custom chevron */}
+          <div className="mt-5">
+            <label className={LABEL_CLS} style={{ fontFamily: MONO_FONT }}>
+              TYPE
+            </label>
+            <div className="relative mt-1">
+              <select
+                value={type}
+                onChange={(e) => changeType(e.target.value as QuestionType)}
+                className={
+                  INPUT_CLS +
+                  " appearance-none pr-9 cursor-pointer"
+                }
+                style={{ fontFamily: SANS_FONT }}
+              >
+                <option value="single">Single choice</option>
+                <option value="multi">Multiple choice</option>
+                <option value="judge">Judge (True / False)</option>
+              </select>
+              <ChevronDown
+                size={14}
+                strokeWidth={1.5}
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+            </div>
+          </div>
 
-        <label className="mt-4 block text-sm font-medium text-gray-700">
-          Tags
-        </label>
-        <div className="mt-1">
-          <TagPicker
-            tags={tags}
-            selectedIds={selectedTagIds}
-            onChangeSelected={setSelectedTagIds}
-            onTagCreated={async () => {
-              try {
-                const fresh = await listTags();
-                setTags(fresh);
-              } catch {
-                /* a refresh failure is non-fatal */
-              }
-            }}
-          />
-        </div>
+          {/* Stem */}
+          <div className="mt-5">
+            <label className={LABEL_CLS} style={{ fontFamily: MONO_FONT }}>
+              STEM (LATEX WITH $…$)
+            </label>
+            <textarea
+              value={stem}
+              onChange={(e) => setStem(e.target.value)}
+              rows={3}
+              className={INPUT_CLS + " mt-1 resize-y"}
+              placeholder="e.g. The derivative of $x^2$ is …"
+            />
+          </div>
 
-        {/* Stage-6 AI helpers — on-demand only, never automatic. */}
-        <div className="mt-5 rounded-md border border-violet-200 bg-violet-50 p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={onAiSuggest}
-              disabled={aiBusy !== null || !stem.trim()}
-              className="rounded-md border border-violet-400 bg-white px-3 py-1.5 text-xs font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50"
-            >
-              {aiBusy === "suggest"
-                ? "Asking AI…"
-                : "AI: suggest tags + summary"}
-            </button>
-            {ocrPrefill?.imageB64 && (
+          {/* Options header */}
+          <div className="mt-5 flex items-center justify-between">
+            <div>
+              <div className={LABEL_CLS} style={{ fontFamily: MONO_FONT }}>
+                OPTIONS
+              </div>
+              <div
+                className="mt-0.5 font-mono text-[11px] text-slate-400"
+                style={{ fontFamily: MONO_FONT }}
+              >
+                {isJudge
+                  ? "radio = correct"
+                  : type === "multi"
+                    ? "checkbox = correct"
+                    : "radio = correct"}
+              </div>
+            </div>
+            {!isJudge && (
               <button
                 type="button"
-                onClick={onImproveWithAI}
-                disabled={aiBusy !== null}
-                className={
-                  "rounded-md border px-3 py-1.5 text-xs font-medium disabled:opacity-50 " +
-                  (!ocrPrefill.matched || looksLikeFormula(stem)
-                    ? "border-amber-500 bg-amber-100 text-amber-900 hover:bg-amber-200"
-                    : "border-violet-400 bg-white text-violet-800 hover:bg-violet-100")
-                }
+                onClick={addOption}
+                className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-slate-600 transition-colors duration-120 hover:border-[#2563EB] hover:text-[#0B3B8C]"
+                style={{ fontFamily: MONO_FONT }}
               >
-                {aiBusy === "parse" ? "Improving…" : "Improve with AI"}
+                <Plus size={12} strokeWidth={1.5} />
+                ADD OPTION
               </button>
             )}
-            <span className="text-[11px] text-gray-500">
-              Runs only when clicked — uses your daily AI quota.
-            </span>
           </div>
-          {aiNote && (
-            <p className="mt-2 text-xs text-violet-700">{aiNote}</p>
-          )}
-          {aiError && (
-            <p className="mt-2 text-xs text-red-700">AI: {aiError}</p>
-          )}
-        </div>
 
-        {validity && (
-          <p className="mt-3 text-xs text-amber-600">{validity}</p>
-        )}
-        {error && (
-          <div className="mt-3 rounded-md border border-red-400 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
+          {/* Options list — each row is a sharp hairline panel */}
+          <div className="mt-2 space-y-2">
+            {options.map((o) => {
+              const isCorrect = correct.includes(o.label);
+              return (
+                <div
+                  key={o.label}
+                  className={
+                    "flex items-center gap-3 rounded-sm border bg-white px-2.5 py-2 transition-colors duration-120 " +
+                    (isCorrect
+                      ? "border-[#1E3A8A]/30 bg-[#EFF6FF]"
+                      : "border-slate-200")
+                  }
+                >
+                  <input
+                    type={type === "multi" ? "checkbox" : "radio"}
+                    name="correct"
+                    checked={isCorrect}
+                    onChange={() => toggleCorrect(o.label)}
+                    aria-label={`Mark ${o.label} correct`}
+                    className="h-3.5 w-3.5 cursor-pointer"
+                    style={{ accentColor: "#1E3A8A" }}
+                  />
+                  <span
+                    className={
+                      "w-6 font-mono text-[12px] font-medium uppercase " +
+                      (isCorrect ? "text-[#0B3B8C]" : "text-slate-500")
+                    }
+                    style={{ fontFamily: MONO_FONT }}
+                  >
+                    {o.label}.
+                  </span>
+                  <input
+                    value={o.content}
+                    onChange={(e) =>
+                      setOptionContent(o.label, e.target.value)
+                    }
+                    disabled={isJudge}
+                    className="flex-1 rounded-sm border border-slate-200 bg-white px-2.5 py-1.5 text-[13px] text-slate-900 placeholder:text-slate-400 outline-none transition-colors duration-120 focus:border-[#1E3A8A] disabled:bg-slate-50 disabled:text-slate-500"
+                    placeholder="Option content (LaTeX ok)"
+                  />
+                  {!isJudge && options.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeOption(o.label)}
+                      aria-label={`Remove option ${o.label}`}
+                      title="Remove option"
+                      className="flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-500 transition-colors duration-120 hover:border-[#DC2626] hover:text-[#DC2626]"
+                    >
+                      <Trash2 size={13} strokeWidth={1.5} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        )}
 
-        <div className="mt-5 flex gap-2">
-          <button
-            type="submit"
-            disabled={submitting || validity !== null}
-            className="rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
-          >
-            {submitting
-              ? "Saving…"
-              : isEdit
-                ? "Save changes"
-                : "Create question"}
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate("/questions")}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
+          {/* Knowledge summary */}
+          <div className="mt-5">
+            <label className={LABEL_CLS} style={{ fontFamily: MONO_FONT }}>
+              KNOWLEDGE SUMMARY (OPTIONAL)
+            </label>
+            <textarea
+              value={knowledgeSummary}
+              onChange={(e) => setKnowledgeSummary(e.target.value)}
+              rows={2}
+              className={INPUT_CLS + " mt-1 resize-y"}
+            />
+          </div>
 
-      {/* Live LaTeX preview */}
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="text-sm font-semibold text-gray-700">Preview</h2>
-        <div className="mt-3 text-sm text-gray-900">
-          <Latex text={stem || "(stem preview)"} />
-        </div>
-        <ul className="mt-4 space-y-1">
-          {options.map((o) => (
-            <li key={o.label} className="flex gap-2 text-sm">
-              <span
-                className={
-                  correct.includes(o.label)
-                    ? "font-semibold text-green-700"
-                    : "text-gray-500"
-                }
+          {/* Tags */}
+          <div className="mt-5">
+            <label className={LABEL_CLS} style={{ fontFamily: MONO_FONT }}>
+              TAGS
+            </label>
+            <div className="mt-1">
+              <TagPicker
+                tags={tags}
+                selectedIds={selectedTagIds}
+                onChangeSelected={setSelectedTagIds}
+                onTagCreated={async () => {
+                  try {
+                    const fresh = await listTags();
+                    setTags(fresh);
+                  } catch {
+                    /* a refresh failure is non-fatal */
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          {/* ---- AI helper panel ------------------------------------- */}
+          <div className="mt-6 rounded-sm border border-[#1E3A8A] bg-[#EFF6FF] p-3">
+            <div
+              className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-[#0B3B8C]"
+              style={{ fontFamily: MONO_FONT }}
+            >
+              <Sparkles size={11} strokeWidth={1.5} />
+              AI ASSISTANT
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={onAiSuggest}
+                disabled={aiBusy !== null || !stem.trim()}
+                className="inline-flex items-center gap-1.5 rounded-sm border border-[#1E3A8A]/30 bg-white px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-[#0B3B8C] transition-colors duration-120 hover:border-[#1E3A8A] hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                style={{ fontFamily: MONO_FONT }}
               >
-                {o.label}.
+                {aiBusy === "suggest" ? (
+                  <>
+                    ASKING AI
+                    <span
+                      aria-hidden
+                      className="qfp-caret ml-0.5 inline-block h-[10px] w-[5px] align-middle"
+                      style={{ backgroundColor: "#0B3B8C" }}
+                    />
+                  </>
+                ) : (
+                  <>AI: SUGGEST TAGS + SUMMARY</>
+                )}
+              </button>
+
+              {ocrPrefill?.imageB64 && (
+                <button
+                  type="button"
+                  onClick={onImproveWithAI}
+                  disabled={aiBusy !== null}
+                  className={
+                    "inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.1em] transition-colors duration-120 disabled:cursor-not-allowed disabled:opacity-60 " +
+                    (showImproveCTA
+                      ? "border-[#1E3A8A] bg-[#DBEAFE] text-[#0B3B8C] hover:bg-[#EFF6FF]"
+                      : "border-[#1E3A8A]/30 bg-white text-[#0B3B8C] hover:border-[#1E3A8A]")
+                  }
+                  style={{ fontFamily: MONO_FONT }}
+                >
+                  {aiBusy === "parse" ? (
+                    <>
+                      IMPROVING
+                      <span
+                        aria-hidden
+                        className="qfp-caret ml-0.5 inline-block h-[10px] w-[5px] align-middle"
+                        style={{ backgroundColor: "#0B3B8C" }}
+                      />
+                    </>
+                  ) : (
+                    <>IMPROVE WITH AI</>
+                  )}
+                </button>
+              )}
+
+              <span
+                className="font-mono text-[10.5px] text-slate-500"
+                style={{ fontFamily: MONO_FONT }}
+              >
+                Runs only when clicked — uses your daily AI quota.
               </span>
-              <span className="text-gray-900">
-                <Latex text={o.content || "(empty)"} />
-              </span>
-            </li>
-          ))}
-        </ul>
-        {knowledgeSummary.trim() && (
-          <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-            💡 <Latex text={knowledgeSummary} />
+            </div>
+
+            {aiNote && (
+              <p
+                className="mt-2 font-mono text-[11.5px] text-[#1E3A8A]"
+                style={{ fontFamily: MONO_FONT }}
+              >
+                {aiNote}
+              </p>
+            )}
+            {aiError && (
+              <p
+                className="mt-2 font-mono text-[11.5px] text-red-700"
+                style={{ fontFamily: MONO_FONT }}
+              >
+                <span className="mr-1">[ AI ] ·</span>
+                {aiError}
+              </p>
+            )}
           </div>
-        )}
-      </div>
-    </form>
+
+          {/* Validity (mono, sapphire-800) */}
+          {validity && (
+            <p
+              className="mt-3 font-mono text-[11.5px] text-[#1E3A8A]"
+              style={{ fontFamily: MONO_FONT }}
+            >
+              <span className="mr-1">[ VALIDATION ] ·</span>
+              {validity}
+            </p>
+          )}
+
+          {/* Error box (sharp red panel) */}
+          {error && (
+            <div
+              className="mt-3 rounded-sm border border-red-300 bg-red-50 px-3 py-2 font-mono text-[12px] text-red-700"
+              style={{ fontFamily: MONO_FONT }}
+            >
+              <span className="mr-1">[ ERROR ] ·</span>
+              {error}
+            </div>
+          )}
+
+          {/* Submit / cancel */}
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            <button
+              type="submit"
+              disabled={submitting || validity !== null}
+              className="inline-flex items-center gap-1.5 rounded-sm border border-[#1E3A8A] bg-[#1E3A8A] px-4 py-2 font-mono text-[12px] font-medium uppercase tracking-[0.12em] text-white transition-colors duration-120 hover:bg-[#0B3B8C] disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ fontFamily: MONO_FONT }}
+            >
+              {submitting ? (
+                <>
+                  {submitLabel}
+                  <span
+                    aria-hidden
+                    className="qfp-caret ml-0.5 inline-block h-[11px] w-[5px] align-middle"
+                    style={{ backgroundColor: "#FFFFFF" }}
+                  />
+                </>
+              ) : (
+                <>
+                  <CornerDownLeft size={12} strokeWidth={1.5} />
+                  {isEdit ? "SAVE CHANGES" : "CREATE"}
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/questions")}
+              className="inline-flex items-center rounded-sm border border-slate-200 bg-white px-3 py-2 font-mono text-[11.5px] uppercase tracking-[0.12em] text-slate-600 transition-colors duration-120 hover:border-[#2563EB] hover:text-[#0B3B8C]"
+              style={{ fontFamily: MONO_FONT }}
+            >
+              ESC CANCEL
+            </button>
+          </div>
+        </div>
+
+        {/* ============================================================
+            PREVIEW PANEL
+            ============================================================ */}
+        <div className="rounded-sm border border-slate-200 bg-white p-5">
+          <div className={EYEBROW_CLS} style={{ fontFamily: MONO_FONT }}>
+            MODULE / PREVIEW
+          </div>
+          <div
+            className="mt-1 font-mono text-[11.5px] text-slate-600"
+            style={{ fontFamily: MONO_FONT }}
+          >
+            &gt; live LaTeX render
+          </div>
+
+          {/* Stem rendering — unchanged Latex usage */}
+          <div className="mt-4 text-[14px] text-slate-900">
+            <Latex text={stem || "(stem preview)"} />
+          </div>
+
+          {/* Options preview — mono [CORRECT] flag, no green */}
+          <ul className="mt-4 space-y-1.5">
+            {options.map((o) => {
+              const isCorrect = correct.includes(o.label);
+              return (
+                <li
+                  key={o.label}
+                  className="flex items-start gap-2 text-[13.5px]"
+                >
+                  <span
+                    className={
+                      "font-mono text-[12px] " +
+                      (isCorrect
+                        ? "font-semibold text-[#1E3A8A]"
+                        : "text-slate-500")
+                    }
+                    style={{ fontFamily: MONO_FONT }}
+                  >
+                    {o.label}.
+                  </span>
+                  <span className="flex-1 text-slate-900">
+                    <Latex text={o.content || "(empty)"} />
+                  </span>
+                  {isCorrect && (
+                    <span
+                      className="ml-1 inline-flex shrink-0 items-center rounded-sm border border-[#1E3A8A]/30 bg-[#DBEAFE] px-1.5 py-0.5 font-mono text-[10px] tracking-[0.1em] text-[#0B3B8C]"
+                      style={{ fontFamily: MONO_FONT }}
+                    >
+                      [CORRECT]
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* Knowledge summary panel */}
+          {knowledgeSummary.trim() && (
+            <div className="mt-5 rounded-sm border border-[#1E3A8A]/15 bg-[#EFF6FF] px-3 py-2.5">
+              <div
+                className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-[#0B3B8C]"
+                style={{ fontFamily: MONO_FONT }}
+              >
+                <Lightbulb size={11} strokeWidth={1.5} />
+                KNOWLEDGE SUMMARY
+              </div>
+              <div className="mt-1.5 text-[13px] text-slate-900">
+                <Latex text={knowledgeSummary} />
+              </div>
+            </div>
+          )}
+        </div>
+      </form>
+    </>
   );
 }

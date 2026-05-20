@@ -1,1 +1,45 @@
 @import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+ * Custom scrollbar — Sapphire Console.
+ *
+ * Replaces the default chunky Chromium/Windows scrollbar with an 8px sapphire
+ * track. Applied globally so both the desktop shell and the browser build
+ * look identical. Firefox uses the `scrollbar-width` / `scrollbar-color`
+ * properties instead of pseudo-elements; both are set.
+ * ------------------------------------------------------------------------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(30, 58, 138, 0.35) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(30, 58, 138, 0.28); /* sapphire-active @ 28% */
+  border-radius: 2px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color 150ms ease-out;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(30, 58, 138, 0.55);
+}
+
+/* Hide the up/down arrow buttons (Windows scrollbars sometimes show them). */
+*::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* Corner where two scrollbars meet (rare; left transparent for cleanliness). */
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
