@@ -367,6 +367,10 @@ class OAuthState(Base):
     state: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     code_verifier: Mapped[str] = mapped_column(Text, nullable=False)
     redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    # 'web' or 'desktop'. The DB CHECK constraint ck_oauth_states_platform
+    # (migration 0008) restricts the value; the router writes it
+    # explicitly on every insert.
+    platform: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = _now_column()
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
