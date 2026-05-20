@@ -68,11 +68,14 @@ MVP target platforms: **Windows desktop + Web**. Other platforms are deferred.
 - **Soft delete**: deletion sets `deleted_at` to prevent one device from resurrecting another's deletion
 - **No offline entry**: when offline, the desktop entry button is disabled — avoids the complexity of a local sync queue
 
-### 3.6 Import / Export
+### 3.6 Cross-Account Transfer (Share Link + Import)
 
-- Custom **JSON** format
-- On import, duplicate detection by question UUID; **default behavior: skip duplicates** (other strategies may be added later)
-- Export includes full question content, options, answers, tags, and knowledge summaries
+- Multi-select questions on the bank page → one click to **bundle into a share link** (server-side short URL like `https://fastqbank.com/s/<token>`), shareable to anyone or to yourself on another account
+- The link is a **value snapshot**: edits or deletions to the source question after share creation do NOT affect the link's contents
+- **Never expires**, **no access analytics**; the creator can revoke from "My shares" (revoked → 410)
+- Hard cap **99 questions per link**; payload is self-contained (stems, options, answers, `knowledge_summary`, `source`, tag names)
+- Import deduplicates by question **UUID** (skip duplicates); tags are reconciled by **name**, match-or-create under the importer's account
+- **Local JSON import/export is dropped from v1** (cross-account transfer is delivered by share links instead)
 
 ---
 
@@ -195,13 +198,13 @@ Field notes:
 
 - Windows + Web dual platform
 - Question entry (manual + screen-region OCR)
-- Hierarchical + multi-tag system + AI suggestion
+- Flat multi-tag system + AI suggestion
 - AI knowledge summary
-- Question library management (CRUD, filter, search)
+- Question library management (CRUD, filter, search, bulk operations)
 - Flashcard review + automatic wrong-set collection
 - AI question generation (5 per run, edit-and-confirm before import)
 - Cloud sync (LWW + soft delete)
-- JSON import / export
+- Cross-account transfer: share link + paste-link import (UUID dedup)
 - AI integration: text (DeepSeek-V3) + on-demand vision (Gemini 2.5 Flash-Lite / GPT-4o-mini) for OCR fallback and formula / LaTeX recognition + server-side rate limiting
 
 **v2**
@@ -232,6 +235,8 @@ Field notes:
 - Mandatory email verification
 - Mobile platforms
 - SRS algorithm
+- Local JSON file import / export (cross-account transfer is via share links)
+- Share-link analytics / TTL / password protection
 
 ---
 
@@ -242,5 +247,3 @@ To be confirmed before implementation:
 1. Concrete rate-limit thresholds (daily token cap, per-minute request cap)
 2. Specific VPS provider (Vultr / Hetzner / DigitalOcean / AWS Lightsail / …) and initial sizing
 3. UI sketches for the desktop main window and pet widget
-4. JSON import/export schema details
-5. Maximum tag hierarchy depth (5 levels suggested as ample)

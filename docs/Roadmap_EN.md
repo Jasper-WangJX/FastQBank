@@ -29,7 +29,7 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 | 6 AI integration | ✅ Done (2026-05-17) | Tag suggestion + knowledge summary + rate limiting; on-demand vision AI for markerless split + LaTeX |
 | 7 Flashcards + wrong-set | ✅ Done (2026-05-18) | Question picker → card drill → persistent wrong set; incl. 7.1 tag/card-view UX |
 | 8 AI generation | ✅ Done (2026-05-19) | Pick seeds in Review entry → mixed/AI-only flashcards → on-card "Add to question bank" (with tags+analysis) |
-| 9 JSON import / export | ⬜ Todo | Full export, dedup-by-UUID import |
+| 9 Bulk ops + share-link transfer | ⬜ Todo | Multi-select on bank page → bulk delete / add tag / bundle into link; paste-link import (UUID dedup) |
 | 10 Polish + Windows installer | ⬜ Todo | electron-builder packaging, productization |
 
 ---
@@ -276,16 +276,26 @@ Select 3 seeds → generate 5 → edit 2 → check 4 and import; the drill page 
 
 ---
 
-## Phase 9 — Import / Export
+## Phase 9 — Bulk Operations + Share-Link Transfer
+
+> Design doc: `docs/superpowers/specs/2026-05-19-phase9-share-link-bulk-ops-design.md`.
+> **Scope change**: the originally planned "local JSON export / import" is dropped from v1; cross-account transfer is delivered via a server-side share-token short link instead. Dedup is still by UUID.
 
 ### Tasks
-- Define the JSON schema (suggest a separate `Docs/JSON_Schema.md`)
-- Backend export endpoint: stream or return the full JSON
-- Backend import endpoint: parse + UUID dedup + skip duplicates + bulk insert
-- Frontend: "Export" and "Import" buttons on the library page
+- Add multi-select to the bank page: icon-only checkbox per row/card; 3-state header checkbox (current-page select-all); when the current page is fully selected, surface a "Select all N filtered" expansion link; selection state survives paging and filter changes, cleared on hard refresh
+- When `selected.size >= 1`, show an action bar above the list: `N selected · Clear · Bulk delete · Add tag · Bundle as link`
+  - Bulk delete: confirm count, fire `DELETE /questions/{id}` in parallel, refetch
+  - Add tag: modal reusing the existing `TagPicker`; append-only (union into each question's existing tag set, no replace)
+  - Bundle as link: `POST /shares` → modal shows the URL + a Copy button; selection retained
+- Header buttons: `[Import]` and a small `[My shares]` link
+  - Import modal: paste a full URL or a bare token → preview (truncated stems + tag reuse/create counts) → confirm → import
+  - My-shares modal: list own active shares, per-row Copy / Revoke (soft-delete = revoke)
+- New table `shares` + new column `questions.imported_from_id UUID NULL` (single migration `0005_shares_and_imported_from.py`); `shares` columns: `id / creator_id / token (12-char URL-safe nanoid UNIQUE) / payload (self-contained JSONB snapshot) / created_at / deleted_at`
+- 5 backend endpoints: `POST /shares` (1..99 hard cap) / `GET /shares/{token}` (no auth; 410 on soft-delete) / `POST /shares/{token}/import` (UUID dedup; tag match-or-create by name) / `GET /shares/me` / `DELETE /shares/{id}` (creator only)
+- Verification: `scripts/verify_phase9.py` (httpx ASGITransport — covers the 5 endpoints + cross-account import + revoke)
 
 ### Exit criteria
-Export to JSON, wipe the questions from DB, re-import, everything restored.
+On the bank page, tick 3 questions + click "Select all N filtered" to add the remaining 7 → 10 selected → click "Bundle as link" → copy the URL. Sign in as another account → Import → paste URL → preview → confirm → 10 questions land with tags resolved by name (created or reused). Revoke the link → re-attempting import returns 410. Bulk-deleting 3 questions on account A does not affect account B's imported copies (the share payload is a value snapshot).
 
 ---
 

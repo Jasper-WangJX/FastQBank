@@ -29,8 +29,8 @@
 | 6 AI 接入 | ✅ 已完成 (2026-05-17) | 标签推荐 + 知识点摘要 + 限流；按需视觉 AI 做无标号拆分 + LaTeX |
 | 7 Flashcards 复习 + 错题集 | ✅ 已完成 (2026-05-18) | 题目选择器 → 卡片式过题 → 持久错题集；含 7.1 标签/卡片视图 UX |
 | 8 AI 出题 | ✅ 已完成 (2026-05-19) | 复习入口选种子 → 混合/仅AI过题 → 卡上"加入题库"（带tag+分析） |
-| 8.5 标签扁平化 + 跨页搜索 | ✅ 已完成 (2026-05-19) | tags 取消层级、CRUD 走抽屉、列表/复习/录题三页统一的"搜索 + AND/OR"过滤；为阶段 9 的导入导出按 name 携带 tag 做准备 |
-| 9 JSON 导入导出 | ⬜ 待办 | 导出全量、导入按 UUID 跳过重复 |
+| 8.5 标签扁平化 + 跨页搜索 | ✅ 已完成 (2026-05-19) | tags 取消层级、CRUD 走抽屉、列表/复习/录题三页统一的"搜索 + AND/OR"过滤；为阶段 9 按 name 携带 tag 做准备 |
+| 9 批量操作 + 链接分享 / 导入 | ⬜ 待办 | 题库页多选 → 批量删除/统一加tag/打包成链接；粘贴链接导入题目（按 UUID 跳重） |
 | 10 打磨 + Windows 安装包 | ⬜ 待办 | electron-builder 打包、产品化收尾 |
 
 
@@ -249,16 +249,26 @@
 
 ---
 
-## 阶段 9 — 导入导出
+## 阶段 9 — 批量操作 + 链接分享 / 导入
+
+> 设计文档：`docs/superpowers/specs/2026-05-19-phase9-share-link-bulk-ops-design.md`。
+> **范围变更**：原计划的"本地 JSON 导入导出"在 v1 中不做；跨账号传题改由服务端 share-token 短链承载。dedup 仍按 UUID。
 
 ### 任务
-- 定下 JSON schema（建议单独写一篇 `Docs/JSON_Schema.md`）
-- 后端导出端点：流式或一次性返回完整 JSON
-- 导入端点：解析 + 按 UUID 查重 + 跳过重复 + 批量插入
-- 前端：题库页加"导出"和"导入"按钮
+- 题库页加多选：每行/每卡左侧加纯图标 checkbox；表头三态主 checkbox（当前页全选）；当前页全选时显示"全选过滤后 N 题"扩展链接；选中状态跨页 / 跨 filter 保留、刷新清空
+- 选中数 ≥1 时出现 action bar：`N selected · 清空 · 批量删除 · 统一加 tag · 打包成链接`
+  - 批量删除：confirm 后并发 DELETE，刷新列表
+  - 统一加 tag：复用现有 `TagPicker`（小 Modal），并集追加、不覆盖
+  - 打包成链接：`POST /shares` → 弹 Modal 展示 URL + Copy；选中保留
+- 顶栏新增 `[Import]` 按钮和 `[My shares]` 小链接
+  - Import Modal：粘贴 URL 或裸 token → 预览（题干截断 + tag 复用/新建数量）→ 确认导入
+  - My shares Modal：列本人 share，按行可 Copy / Revoke（软删 = 撤销）
+- 新表 `shares` + 给 `questions` 加 `imported_from_id UUID NULL`（迁移 `0005_shares_and_imported_from.py`，单次合并）；`shares` 列：`id / creator_id / token (nanoid 12 char unique) / payload (JSONB 自包含快照) / created_at / deleted_at`
+- 后端 5 个端点：`POST /shares`（1..99 题硬上限）/ `GET /shares/{token}`（无鉴权，soft-delete 返 410）/ `POST /shares/{token}/import`（按 UUID 跳重；tag 按 name match-or-create）/ `GET /shares/me` / `DELETE /shares/{id}`（仅创建者）
+- 验证脚本：`scripts/verify_phase9.py`（httpx ASGITransport 走完上述五端点 + 跨账号 import + 撤销）
 
 ### 退出标准
-导出一份 JSON，删掉数据库的题，再导入，所有题完整恢复。
+题库勾 3 道 + 点"全选过滤后剩余 7 道" → 共 10 道 → 点"打包成链接" → 复制 URL；换账号 → Import → 粘贴 → 预览 → 导入；新账号题库出现 10 道题，tag 按 name 自动建/复用；撤销链接后再次 Import 返 410；A 账号批量删 3 道题不影响 B 账号已导入的 10 道。
 
 ---
 
