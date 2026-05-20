@@ -181,15 +181,25 @@ out.
 
 ### 4.5 `GET /auth/google/start`
 
-Query: `?platform=web|desktop`
+Query: `?platform=web|desktop&redirect_uri=<url>` — `redirect_uri` is
+required for `platform=desktop` (the desktop main process supplies a
+fresh `http://127.0.0.1:<port>/oauth/callback` per attempt; Google
+allows any loopback port without console pre-registration). For
+`platform=web` the parameter is ignored and the server uses
+`settings.oauth_redirect_uri_web`.
 
 Behavior:
 1. If `GOOGLE_CLIENT_ID` is unconfigured, return `503 google sign-in
    not configured`.
-2. Generate `state` (token_urlsafe 32) and `code_verifier`
+2. Resolve the `redirect_uri`:
+   - `platform=web` → `settings.oauth_redirect_uri_web`.
+   - `platform=desktop` → validate the supplied value matches the
+     regex `^http://(127\.0\.0\.1|localhost):\d{1,5}/oauth/callback$`;
+     reject with `400 invalid redirect_uri` otherwise.
+3. Generate `state` (token_urlsafe 32) and `code_verifier`
    (token_urlsafe 64); derive `code_challenge = S256(code_verifier)`.
-3. Choose `redirect_uri` from settings based on `platform`.
-4. Insert `oauth_states` row.
+4. Insert `oauth_states` row (state, code_verifier, redirect_uri,
+   expires in 5 min).
 5. Return `{ "authorize_url": "<https://accounts.google.com/o/oauth2/v2/auth?...>", "state": "<state>" }`.
 
 The authorize URL uses standard Google OAuth params:
@@ -235,7 +245,11 @@ mail_from: str = "FastQBank <onboarding@resend.dev>"
 google_client_id: str | None = None
 google_client_secret: str | None = None
 oauth_redirect_uri_web: str = "http://localhost:5173/oauth/callback"
-oauth_redirect_uri_desktop: str = "app://aqb/oauth/callback"
+# No OAUTH_REDIRECT_URI_DESKTOP setting: the desktop client picks an
+# ephemeral loopback port per attempt and sends the redirect_uri to
+# /auth/google/start. The server only validates the URL shape (see
+# §4.5) — Google requires no console-side pre-registration for
+# loopback URIs on Desktop OAuth clients.
 ```
 
 All keys default to None / dev defaults so the app still boots
@@ -348,29 +362,54 @@ truth.
 
 ## 7. Desktop OAuth integration
 
+Google OAuth does not allow custom-scheme redirect URIs (`app://`,
+`fastqbank://`) for clients of type "Desktop"; it requires either an
+http(s) URL or a loopback IP. The cleanest fit is a short-lived
+loopback HTTP server inside the Electron main process — Google
+permits any port on `127.0.0.1` without pre-registration, and the
+server is single-use so there is no long-lived listener.
+
 ### 7.1 Main process
 
-- Reuses the existing `app://aqb` custom protocol from stage 4;
-  extends its handler so a navigation to `app://aqb/oauth/callback`
-  is intercepted: instead of loading a renderer page, it parses
-  `code` + `state` from the URL and forwards them to the renderer
-  via `webContents.send("oauth:callback", { code, state })`.
-- New IPC channel `oauth:open-external` (renderer → main): main
-  process validates the URL begins with
-  `https://accounts.google.com/`, then calls
-  `shell.openExternal(url)`. URL whitelist prevents a compromised
-  renderer from using this channel to open arbitrary protocols.
-- Preload script exposes `desktop.openExternal(url)` and
-  `desktop.onOAuthCallback(cb)` on the `window.desktop` bridge,
-  matching the existing pattern in `apps/web/src/lib/desktop.ts`.
+- New module `apps/desktop/src/oauth.ts` exporting two helpers:
+  - `startLoopbackOnce(): Promise<{ port: number; awaitCallback: Promise<{ code: string; state: string }> }>` —
+    binds an `http.createServer` to port 0, returns the OS-assigned
+    port and a promise that resolves the first GET to
+    `/oauth/callback?code&state`. Responds 200 with a static HTML
+    "You can close this window. Returning to FastQBank…" and closes
+    the server immediately after. Times out after 5 minutes
+    (rejecting the promise) so a forgotten flow does not leak a
+    listener.
+  - `openGoogleAuthUrl(url: string)` — validates the URL starts with
+    `https://accounts.google.com/` and calls
+    `shell.openExternal(url)`. The whitelist prevents a compromised
+    renderer from abusing this IPC to launch arbitrary URLs.
+- New IPC channels (added to `apps/desktop/src/ipc.ts`):
+  - `oauth:start-loopback` (renderer → main, invoke) — calls
+    `startLoopbackOnce()`, returns the port; when the callback
+    arrives the main process sends `oauth:callback` with
+    `{ code, state }`.
+  - `oauth:open-external` (renderer → main, send) — calls
+    `openGoogleAuthUrl(url)`.
+  - `oauth:callback` (main → renderer, broadcast) — `{ code, state }`.
+- Preload script (`apps/desktop/src/preload.ts`) exposes them on
+  the existing `window.desktop` bridge as
+  `desktop.oauth.startLoopback()`, `desktop.oauth.openExternal(url)`,
+  and `desktop.oauth.onCallback(cb)`.
 
 ### 7.2 Renderer
 
-- A top-level `useEffect` in `App.tsx` (mounted whether logged in or
-  not) subscribes to `desktop.onOAuthCallback`. On receipt, it calls
-  `completeOAuthCallback(...)` (shared with the web route).
-- After completion, `navigate("/")` lands the user on the main app
-  view.
+- The desktop branch of `GoogleSignInButton` (§6.2):
+  1. `port = await desktop.oauth.startLoopback()`
+  2. `unsubscribe = desktop.oauth.onCallback(({ code, state }) => completeOAuthCallback(code, state); unsubscribe())`
+  3. `redirect_uri = "http://127.0.0.1:" + port + "/oauth/callback"`
+  4. `fetch /auth/google/start?platform=desktop&redirect_uri=...`
+  5. `desktop.oauth.openExternal(authorize_url)`
+- The callback subscription is established **before** opening the
+  browser so no race can drop the `oauth:callback` event.
+- `completeOAuthCallback` is the same helper used by the web route
+  (§6.5): POST `/auth/google/callback` with `{ code, state }`, then
+  `login(token) + navigate("/")`.
 
 ## 8. Error handling
 
@@ -460,11 +499,13 @@ MAIL_FROM=FastQBank <onboarding@resend.dev>
 
 # --- Phase 11: Google sign-in (optional) ---
 # Create an OAuth client at https://console.cloud.google.com/apis/credentials.
+# Use client type "Desktop" — its loopback URI exception (any port on
+# 127.0.0.1) is what makes desktop sign-in work without per-port
+# registration. The same client also serves the web flow.
 # Leave GOOGLE_CLIENT_ID blank to hide the "Continue with Google" button.
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 OAUTH_REDIRECT_URI_WEB=http://localhost:5173/oauth/callback
-OAUTH_REDIRECT_URI_DESKTOP=app://aqb/oauth/callback
 ```
 
 `requirements.txt`: add `google-auth~=2.34` (for id_token + JWKS
