@@ -32,6 +32,7 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 | 9 Bulk ops + share-link transfer | ✅ Done (2026-05-19) | Multi-select on bank page → bulk delete / add tag / bundle into link; paste-link import (UUID dedup) |
 | 10 Polish + Windows installer | ⬜ Todo | electron-builder packaging, productization |
 | 11 Account security hardening | ✅ Done (2026-05-20) | Email verification on signup (Resend, console stub when unset), confirm-password input, Google sign-in on web + Electron desktop (loopback http server on 127.0.0.1) |
+| 11.1 Account independence + Settings modal + Cancellation | ✅ Done (2026-05-20) | Same-email Google + password accounts become two independent rows; gear icon replaces Help and opens a Settings modal with reset password (password accounts only) and delete account; deleting a password account blocks re-registration of the same email for 24 hours |
 
 ---
 
@@ -348,6 +349,17 @@ Hand the `.exe` to a friend; they install it, log in, enter and review questions
 
 ### Exit criteria
 Password confirm-field reports a mismatch on blur; the same email cannot request a new code within 60s; five wrong codes drop the verification row; with no `RESEND_API_KEY`, the code prints to the uvicorn log; with no `GOOGLE_CLIENT_ID`, neither auth page renders the Google button; web Google flow lands at `/oauth/callback` and forwards to the question bank logged in; desktop Google flow completes via the default browser and the Electron app auto-logs-in; a password account and a same-email Google sign-in auto-merge into a single user row, after which the password login still works.
+
+---
+
+## Phase 11.1 — Account independence + Settings modal + Cancellation
+
+> **Status: ✅ Done (2026-05-20).** Design: `docs/superpowers/specs/2026-05-20-account-settings-and-cancellation-design.md`. Plan: `docs/superpowers/plans/2026-05-20-account-settings-and-cancellation.md`.
+
+### Key changes
+- DB migration 0007 replaces the global `UNIQUE(email)` with two partial unique indexes (one for password rows, one for Google rows) and adds a `deleted_users (email, deleted_at)` table.
+- Backend: `/auth/google/callback` looks up users by Google `sub` (no email-merge); `/auth/request-code` and `/auth/register` narrow their "already registered" check to `password_hash IS NOT NULL`; three new authed endpoints added (`/auth/request-password-reset-code`, `/auth/reset-password`, `/auth/delete-account`); `/me` exposes `has_password`.
+- Frontend: `AuthContext` caches `/me` as `currentUser`; `AppLayout` swaps the placeholder Help icon for a Settings gear that opens a `SettingsModal` with Reset password (password accounts only) and Delete account sections.
 
 ---
 
