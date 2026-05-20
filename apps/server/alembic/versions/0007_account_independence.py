@@ -9,9 +9,14 @@ consistent ("only unique where the column has a value").
 Add `deleted_users (email, deleted_at)` to enforce a 24-hour
 password-re-registration cooldown after `/auth/delete-account`.
 
-Revision ID: 0007_account_independence_and_cancellation
+Revision ID: 0007_account_independence
 Revises: 0006_phase11_account_security
 Create Date: 2026-05-20
+
+(Revision id kept ≤32 chars because alembic_version.version_num is
+VARCHAR(32) by default — a longer id like
+'0007_account_independence_and_cancellation' (42 chars) fails the
+final UPDATE that stamps the new version.)
 """
 
 from collections.abc import Sequence
@@ -21,7 +26,7 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision: str = "0007_account_independence_and_cancellation"
+revision: str = "0007_account_independence"
 down_revision: str | None = "0006_phase11_account_security"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
