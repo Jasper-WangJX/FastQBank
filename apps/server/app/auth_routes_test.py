@@ -28,6 +28,8 @@ EXPECTED_ROUTES: dict[str, set[str]] = {
     "/auth/request-password-reset-code": {"POST"},
     "/auth/reset-password": {"POST"},
     "/auth/delete-account": {"POST"},
+    "/auth/forgot-password": {"POST"},
+    "/auth/reset-password-public": {"POST"},
     "/me": {"GET"},
 }
 
