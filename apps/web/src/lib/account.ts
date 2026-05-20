@@ -29,3 +29,28 @@ export async function deleteAccount(confirm_email: string): Promise<void> {
     body: { confirm_email },
   });
 }
+
+// --- Phase 11.2: public forgot-password flow -------------------------------
+
+export async function forgotPassword(email: string): Promise<void> {
+  await apiFetch<void>("/auth/forgot-password", {
+    method: "POST",
+    body: { email },
+  });
+}
+
+export interface ResetPasswordPublicBody {
+  email: string;
+  code: string;
+  new_password: string;
+  confirm_password: string;
+}
+
+export async function resetPasswordPublic(
+  body: ResetPasswordPublicBody,
+): Promise<void> {
+  await apiFetch<void>("/auth/reset-password-public", {
+    method: "POST",
+    body,
+  });
+}
