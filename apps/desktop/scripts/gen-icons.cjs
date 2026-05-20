@@ -24,9 +24,6 @@ const pngToIco = require("png-to-ico");
 const SRC = path.resolve(__dirname, "..", "..", "..", "resources", "fastqbICON.png");
 const OUT_DIR = path.resolve(__dirname, "..", "assets");
 
-// Internal working canvas. 512 gives the resampler enough headroom for
-// the 256-px ICO sub-image without visible aliasing.
-const CANVAS_SIDE = 512;
 // Padding around the visible bbox, as a fraction of the bbox's longer
 // side. Matches Windows app-icon breathing room.
 const PADDING_FRAC = 0.1;
