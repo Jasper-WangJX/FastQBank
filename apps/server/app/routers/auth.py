@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.deps import CurrentUser
 from app.mail import send_verification
-from app.models import EmailVerification, OAuthState, User
+from app.models import DeletedUser, EmailVerification, OAuthState, User
 from app.oauth_google import (
     build_authorize_url,
     exchange_code_for_id_token,
@@ -81,14 +81,40 @@ async def request_code(
     the same (email, purpose)."""
     now = datetime.now(tz=timezone.utc)
 
-    # Already-registered check (only meaningful for purpose=register).
-    existing_user = await db.scalar(
-        select(User).where(User.email == body.email)
+    # Already-registered check: only blocks if a PASSWORD account
+    # exists for this email. A Google account with the same email
+    # does not block password registration (Phase 11.1 made the two
+    # rows independent).
+    existing_pw = await db.scalar(
+        select(User).where(
+            User.email == body.email,
+            User.password_hash.is_not(None),
+        )
     )
-    if existing_user is not None:
+    if existing_pw is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="email already registered",
+        )
+
+    # Cooldown check: a password account at this email was recently
+    # deleted; block re-registration for 24h. Google sign-in is not
+    # affected — it doesn't write to deleted_users.
+    cutoff = now - timedelta(hours=24)
+    recent_delete = await db.scalar(
+        select(DeletedUser)
+        .where(
+            DeletedUser.email == body.email,
+            DeletedUser.deleted_at > cutoff,
+        )
+        .order_by(DeletedUser.deleted_at.desc())
+        .limit(1)
+    )
+    if recent_delete is not None:
+        unlock_at = recent_delete.deleted_at + timedelta(hours=24)
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail=f"email cooling down, try again after {unlock_at.isoformat()}",
         )
 
     # Per-(email, purpose) 60-second cooldown.
@@ -197,7 +223,14 @@ async def register(
     await db.delete(row)
 
     # Email uniqueness re-check (concurrent register).
-    existing = await db.scalar(select(User).where(User.email == body.email))
+    # Concurrent-register guard: only collides with another password
+    # account; Google rows with the same email are independent.
+    existing = await db.scalar(
+        select(User).where(
+            User.email == body.email,
+            User.password_hash.is_not(None),
+        )
+    )
     if existing is not None:
         await db.commit()
         raise HTTPException(
