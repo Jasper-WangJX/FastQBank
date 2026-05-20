@@ -5,16 +5,22 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../lib/api";
 import {
+  createShare,
   deleteQuestion,
   listQuestions,
   listTags,
   type QuestionListOut,
   type Tag,
 } from "../lib/qbank";
+import { getTagQuestionIds } from "../lib/review";
 import Latex from "../components/Latex";
 import TagFilter from "../components/tags/TagFilter";
 import TagManageDrawer from "../components/tags/TagManageDrawer";
 import { QuestionCard, QuestionCardGrid } from "../components/QuestionCard";
+import BulkAddTagModal from "../components/share/BulkAddTagModal";
+import BundleResultModal from "../components/share/BundleResultModal";
+import ImportModal from "../components/share/ImportModal";
+import MySharesModal from "../components/share/MySharesModal";
 import { getDesktop } from "../lib/desktop";
 
 const PAGE_SIZE = 10;
@@ -36,6 +42,19 @@ export default function QuestionListPage() {
   const [busy, setBusy] = useState(false);
   // Presentation only — default "list" preserves the original UX.
   const [view, setView] = useState<"list" | "cards">("list");
+  // Stage-9 selection: a Set of question ids. Survives paging / filter
+  // changes (intentional — spec §2.6); cleared on hard refresh.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Modal flags
+  const [importOpen, setImportOpen] = useState(false);
+  const [mySharesOpen, setMySharesOpen] = useState(false);
+  const [bundleResult, setBundleResult] = useState<{
+    url: string;
+    count: number;
+  } | null>(null);
+  const [bulkTagOpen, setBulkTagOpen] = useState(false);
+  // Lightweight toast (info / success). Bulk delete + import use this.
+  const [toast, setToast] = useState<string | null>(null);
 
   // Tag list for the filter dropdown (loaded once).
   useEffect(() => {
@@ -122,6 +141,114 @@ export default function QuestionListPage() {
     setTick((x) => x + 1);
   }
 
+  const pageIds = (data?.items ?? []).map((qq) => qq.id);
+  const pageAllSelected =
+    pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const pageSomeSelected = pageIds.some((id) => selected.has(id));
+
+  function togglePageAll() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (pageAllSelected) {
+        for (const id of pageIds) next.delete(id);
+      } else {
+        for (const id of pageIds) next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function selectAllFiltered() {
+    // Reuse the existing review endpoint — it already returns every
+    // live owned question id matching tag_id[] + tag_match.
+    try {
+      const ids = await getTagQuestionIds(
+        tagIds.length > 0 ? tagIds : [],
+        tagIds.length > 0 ? tagMatch : "all",
+      );
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) next.add(id);
+        return next;
+      });
+    } catch (err: unknown) {
+      setError(err instanceof ApiError ? err.message : "Network error");
+    }
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+  }
+
+  async function onBulkDelete() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} questions?`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Capped concurrency: 10 at a time. The backend tolerates 404
+      // for ids the user no longer owns (e.g. deleted in another tab).
+      const queue = [...ids];
+      const workers = new Array(Math.min(10, queue.length))
+        .fill(null)
+        .map(async () => {
+          while (queue.length > 0) {
+            const id = queue.shift();
+            if (id === undefined) break;
+            try {
+              await deleteQuestion(id);
+            } catch {
+              /* swallow — refetch reconciles */
+            }
+          }
+        });
+      await Promise.all(workers);
+      // Drop deleted ids from the Set
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
+      setToast(`Deleted ${ids.length} question${ids.length === 1 ? "" : "s"}`);
+      setTimeout(() => setToast(null), 3000);
+      setTick((t) => t + 1);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onBundle() {
+    const ids = [...selected];
+    if (ids.length === 0 || ids.length > 99) {
+      if (ids.length > 99) {
+        setError(
+          `Can't bundle more than 99 questions per link (you have ${ids.length} selected).`,
+        );
+      }
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await createShare(ids);
+      setBundleResult({ url: r.share_url, count: ids.length });
+    } catch (err: unknown) {
+      setError(err instanceof ApiError ? err.message : "Network error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const total = data?.total ?? 0;
   const items = data?.items ?? [];
   const from = total === 0 ? 0 : offset + 1;
@@ -142,6 +269,18 @@ export default function QuestionListPage() {
               OCR capture
             </button>
           )}
+          <button
+            onClick={() => setImportOpen(true)}
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Import
+          </button>
+          <button
+            onClick={() => setMySharesOpen(true)}
+            className="rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:underline"
+          >
+            My shares
+          </button>
           <button
             onClick={() => navigate("/questions/new")}
             className="rounded-md bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700"
@@ -218,6 +357,63 @@ export default function QuestionListPage() {
         />
       </div>
 
+      {/* Stage-9: bulk action bar */}
+      {selected.size >= 1 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-2">
+          <span className="text-sm font-medium text-slate-700">
+            {selected.size} selected
+          </span>
+          <button
+            onClick={clearSelection}
+            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs hover:bg-gray-50"
+          >
+            Clear
+          </button>
+          <span className="ml-2 h-4 w-px bg-gray-300" />
+          <button
+            disabled={busy}
+            onClick={onBulkDelete}
+            className="rounded-md border border-red-300 bg-white px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            Bulk delete
+          </button>
+          <button
+            disabled={busy}
+            onClick={() => setBulkTagOpen(true)}
+            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+          >
+            Add tag
+          </button>
+          <button
+            disabled={busy || selected.size > 99}
+            onClick={onBundle}
+            title={
+              selected.size > 99
+                ? "Bundle is capped at 99 questions per link"
+                : undefined
+            }
+            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+          >
+            Bundle as link
+          </button>
+        </div>
+      )}
+
+      {/* Stage-9: "select all filtered" prompt — shown only when the
+          current page is fully selected AND the global Set is still
+          smaller than the total match count. */}
+      {pageAllSelected && selected.size < total && (
+        <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+          Selected {selected.size} on this page.{" "}
+          <button
+            onClick={selectAllFiltered}
+            className="font-medium underline hover:no-underline"
+          >
+            Select all {total} matching
+          </button>
+        </div>
+      )}
+
       {error && (
         <div className="mt-4 rounded-md border border-red-400 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
@@ -240,6 +436,15 @@ export default function QuestionListPage() {
               <QuestionCard
                 key={qq.id}
                 question={qq}
+                selectControl={
+                  <input
+                    type="checkbox"
+                    checked={selected.has(qq.id)}
+                    onChange={() => toggleOne(qq.id)}
+                    title="Select this question"
+                    className="h-4 w-4"
+                  />
+                }
                 actions={
                   <>
                     <button
@@ -263,11 +468,35 @@ export default function QuestionListPage() {
           </QuestionCardGrid>
         ) : (
           <div className="divide-y divide-gray-100 rounded-md border border-gray-200">
+            <div className="flex items-center gap-3 bg-gray-50 px-3 py-2">
+              <input
+                type="checkbox"
+                checked={pageAllSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = !pageAllSelected && pageSomeSelected;
+                }}
+                onChange={togglePageAll}
+                title="Select this page"
+                className="h-4 w-4"
+              />
+              <span className="text-xs text-gray-500">
+                {pageSomeSelected
+                  ? `${pageIds.filter((id) => selected.has(id)).length} of ${pageIds.length} on this page selected`
+                  : "Select page"}
+              </span>
+            </div>
             {items.map((qq) => (
               <div
                 key={qq.id}
                 className="flex items-start gap-3 px-3 py-3"
               >
+                <input
+                  type="checkbox"
+                  checked={selected.has(qq.id)}
+                  onChange={() => toggleOne(qq.id)}
+                  title="Select this question"
+                  className="mt-1 h-4 w-4 shrink-0"
+                />
                 <div className="min-w-0 flex-1">
                   <Latex
                     text={qq.stem}
@@ -343,6 +572,48 @@ export default function QuestionListPage() {
         tags={tags}
         onChanged={reloadTagsAndList}
       />
+      {importOpen && (
+        <ImportModal
+          onClose={() => setImportOpen(false)}
+          onImported={(msg) => {
+            setToast(msg);
+            setTimeout(() => setToast(null), 4000);
+            setTick((t) => t + 1);
+          }}
+        />
+      )}
+      {mySharesOpen && (
+        <MySharesModal
+          baseUrl={window.location.origin}
+          onClose={() => setMySharesOpen(false)}
+        />
+      )}
+      {bundleResult && (
+        <BundleResultModal
+          url={bundleResult.url}
+          questionCount={bundleResult.count}
+          onClose={() => setBundleResult(null)}
+        />
+      )}
+      {bulkTagOpen && (
+        <BulkAddTagModal
+          questionIds={[...selected]}
+          initialTags={tags}
+          onClose={() => setBulkTagOpen(false)}
+          onApplied={() => {
+            setToast(
+              `Tagged ${selected.size} question${selected.size === 1 ? "" : "s"}`,
+            );
+            setTimeout(() => setToast(null), 3000);
+            setTick((t) => t + 1);
+          }}
+        />
+      )}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 rounded-md bg-slate-800 px-4 py-2 text-sm text-white shadow-lg">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
