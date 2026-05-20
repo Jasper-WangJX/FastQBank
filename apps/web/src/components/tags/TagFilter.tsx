@@ -124,7 +124,9 @@ export default function TagFilter({
           tags={tags}
           selectedIds={selectedIds}
           onToggle={toggle}
-          maxListHeight={240}
+          // ~4–5 rows tall — the previous 240 made the dropdown read
+          // as a full-page sidebar in dense pages.
+          maxListHeight={160}
         />
       </div>
     </div>

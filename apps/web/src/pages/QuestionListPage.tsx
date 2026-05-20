@@ -712,12 +712,15 @@ export default function QuestionListPage() {
           </>
         ) : (
           <div className="overflow-hidden rounded-sm border border-slate-200">
-            {/* Header row */}
+            {/* Header row. IDX / ID / UPDATED have been dropped — they
+                added no signal for the user and ate horizontal space
+                that's better spent on the stem. The freed space goes
+                to STEM; TYPE + TAGS shift right. */}
             <div
-              className="grid items-center gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 font-mono uppercase tracking-[0.12em] text-[10px] text-slate-500"
+              className="grid items-center gap-x-8 border-b border-slate-200 bg-slate-50 px-3 py-2 font-mono uppercase tracking-[0.12em] text-[10px] text-slate-500"
               style={{
                 gridTemplateColumns:
-                  "24px 44px 72px minmax(0, 1fr) 60px 180px 120px 60px",
+                  "24px minmax(0, 1fr) 60px 200px 60px",
               }}
             >
               <span className="flex items-center justify-center">
@@ -735,28 +738,23 @@ export default function QuestionListPage() {
                   className={checkboxClass}
                 />
               </span>
-              <span>IDX</span>
-              <span>ID</span>
               <span>STEM</span>
               <span>TYPE</span>
               <span>TAGS</span>
-              <span>UPDATED</span>
               <span className="text-right">ACTIONS</span>
             </div>
 
             <ul className="divide-y divide-slate-100">
               {items.map((qq, i) => {
-                const idx = String(offset + i + 1).padStart(4, "0");
-                const shortId = `Q-${qq.id.slice(0, 6)}`;
                 const visibleTags = qq.tags.slice(0, 2);
                 const overflow = qq.tags.length - visibleTags.length;
                 return (
                   <li
                     key={qq.id}
-                    className="fqb-row group relative grid items-center gap-3 px-3 py-2.5 transition-colors duration-150 hover:bg-[#EFF6FF] before:absolute before:inset-y-0 before:left-0 before:w-[2px] before:bg-[#1E3A8A] before:opacity-0 group-hover:before:opacity-100"
+                    className="fqb-row group relative grid items-center gap-x-8 px-3 py-2.5 transition-colors duration-150 hover:bg-[#EFF6FF] before:absolute before:inset-y-0 before:left-0 before:w-[2px] before:bg-[#1E3A8A] before:opacity-0 group-hover:before:opacity-100"
                     style={{
                       gridTemplateColumns:
-                        "24px 44px 72px minmax(0, 1fr) 60px 180px 120px 60px",
+                        "24px minmax(0, 1fr) 60px 200px 60px",
                       animationDelay: `${i * 10}ms`,
                     }}
                   >
@@ -779,16 +777,6 @@ export default function QuestionListPage() {
                         aria-label="Select this question"
                         className={checkboxClass}
                       />
-                    </span>
-
-                    {/* IDX gutter */}
-                    <span className="font-mono text-[11px] tabular-nums text-slate-400 group-hover:text-[#0B3B8C]">
-                      {idx}
-                    </span>
-
-                    {/* Short ID */}
-                    <span className="truncate font-mono text-[11.5px] font-medium text-[#0B3B8C]">
-                      {shortId}
                     </span>
 
                     {/* Stem */}
@@ -820,11 +808,6 @@ export default function QuestionListPage() {
                           +{overflow}
                         </span>
                       )}
-                    </span>
-
-                    {/* Updated — list shape has no timestamp, render em-dash */}
-                    <span className="font-mono text-[11px] text-slate-400">
-                      —
                     </span>
 
                     {/* Actions */}

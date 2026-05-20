@@ -8,6 +8,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { Circle, CornerDownLeft, Lock, Mail } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, apiFetch } from "../lib/api";
+import { getDesktop } from "../lib/desktop";
+import WindowControls from "../components/WindowControls";
+import { DRAG_STYLE, NO_DRAG_STYLE } from "../components/windowChrome";
 
 interface TokenOut {
   access_token: string;
@@ -19,6 +22,7 @@ const BUILD_TAG = "v0.9.0";
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const desktop = getDesktop();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -86,21 +90,35 @@ export default function LoginPage() {
         }
       `}</style>
 
-      {/* Non-sticky header strip — brand + build tag. */}
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-5xl items-center gap-2 px-4 py-3">
-          <img
-            src="/fastqb-logo.png"
-            alt=""
-            className="h-7 w-7 shrink-0 select-none rounded-sm object-contain"
-            draggable={false}
-          />
-          <span className="font-semibold tracking-tight text-slate-900">
-            FastQBank
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-400">
-            {BUILD_TAG}
-          </span>
+      {/* Sticky header strip — brand + build tag, plus the desktop
+          window controls on the right. Whole strip is the drag region
+          (Electron frameless) so users can grab any empty space to
+          move the window. */}
+      <header
+        className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur-sm"
+        style={desktop ? DRAG_STYLE : undefined}
+      >
+        <div className="flex items-center gap-2 pl-4">
+          <div
+            className="flex items-center gap-2 py-3"
+            style={desktop ? NO_DRAG_STYLE : undefined}
+          >
+            <img
+              src="/fastqb-logo.png"
+              alt=""
+              className="h-7 w-7 shrink-0 select-none rounded-sm object-contain"
+              draggable={false}
+            />
+            <span className="font-semibold tracking-tight text-slate-900">
+              FastQBank
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-400">
+              {BUILD_TAG}
+            </span>
+          </div>
+          <div className="ml-auto flex items-center">
+            {desktop && <WindowControls desktop={desktop} />}
+          </div>
         </div>
       </header>
 
