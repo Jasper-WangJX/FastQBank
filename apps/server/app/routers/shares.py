@@ -125,6 +125,38 @@ async def create_share(
     return ShareCreateOut(token=token, share_url=f"{base}/s/{token}")
 
 
+@router.get("/shares/me", response_model=MyShareListOut)
+async def list_my_shares(
+    user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> MyShareListOut:
+    """Current user's active shares, newest first. `question_count` is
+    derived from `len(payload['questions'])` to avoid a second table /
+    a denormalized counter."""
+    rows = list(
+        (
+            await db.scalars(
+                select(Share)
+                .where(
+                    Share.creator_id == user.id,
+                    Share.deleted_at.is_(None),
+                )
+                .order_by(Share.created_at.desc())
+            )
+        ).all()
+    )
+    items = [
+        MyShareRow(
+            id=r.id,
+            token=r.token,
+            question_count=len(r.payload.get("questions", [])),
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
+    return MyShareListOut(items=items)
+
+
 async def _get_active_share_by_token(
     db: AsyncSession, token: str
 ) -> Share:
@@ -266,38 +298,6 @@ async def import_share(
         tags_created=tags_created,
         tags_reused=tags_reused,
     )
-
-
-@router.get("/shares/me", response_model=MyShareListOut)
-async def list_my_shares(
-    user: CurrentUser,
-    db: AsyncSession = Depends(get_db),
-) -> MyShareListOut:
-    """Current user's active shares, newest first. `question_count` is
-    derived from `len(payload['questions'])` to avoid a second table /
-    a denormalized counter."""
-    rows = list(
-        (
-            await db.scalars(
-                select(Share)
-                .where(
-                    Share.creator_id == user.id,
-                    Share.deleted_at.is_(None),
-                )
-                .order_by(Share.created_at.desc())
-            )
-        ).all()
-    )
-    items = [
-        MyShareRow(
-            id=r.id,
-            token=r.token,
-            question_count=len(r.payload.get("questions", [])),
-            created_at=r.created_at,
-        )
-        for r in rows
-    ]
-    return MyShareListOut(items=items)
 
 
 @router.delete(
