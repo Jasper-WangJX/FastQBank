@@ -45,6 +45,7 @@
     "cross-env": "^7.0.3",
     "electron": "^33.0.0",
     "electron-builder": "^25.1.8",
+    "png-to-ico": "^2.1.8",
     "typescript": "~6.0.2"
   },
   "pnpm": {
