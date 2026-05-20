@@ -6,8 +6,6 @@
 // The regex anchors on the `/s/` segment so a URL like
 // `https://example.com/path/s/AbC_-123aZ09/extra` extracts cleanly.
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const TOKEN_RE = /[A-Za-z0-9_-]{12}/;
 const URL_TOKEN_RE = /\/s\/([A-Za-z0-9_-]{12})\b/;
 
 export function extractShareToken(raw: string): string | null {
