@@ -30,7 +30,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db
 from app.deps import CurrentUser
 from app.mail import send_verification
-from app.models import DeletedUser, EmailVerification, OAuthState, User
+from app.models import (
+    AiUsage,
+    DeletedUser,
+    EmailVerification,
+    GenSession,
+    OAuthState,
+    Question,
+    ReviewLog,
+    Tag,
+    User,
+    WrongQuestion,
+)
 from app.oauth_google import (
     build_authorize_url,
     exchange_code_for_id_token,
@@ -578,5 +589,81 @@ async def reset_password(
     # tab without buying real security.
     await db.delete(row)
     current_user.password_hash = hash_password(body.new_password)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Delete account (authenticated) ---------------------------------------
+
+
+@router.post(
+    "/auth/delete-account",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+async def delete_account(
+    body: DeleteAccountIn,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Hard-delete the caller and everything they own. For password
+    accounts, also record (email, deleted_at) in deleted_users so
+    /auth/request-code blocks re-registration for 24 hours. Google
+    accounts skip the cooldown — the user can re-sign-in immediately.
+
+    Done explicitly (not via FK CASCADE) because most user_id FKs
+    in the original schema don't carry ON DELETE CASCADE. Order
+    matters: child tables before users.
+    """
+    if body.confirm_email != current_user.email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="email mismatch",
+        )
+
+    uid = current_user.id
+
+    # Clean up child rows first.
+    await db.execute(
+        delete(ReviewLog).where(ReviewLog.user_id == uid)
+    )
+    await db.execute(
+        delete(WrongQuestion).where(WrongQuestion.user_id == uid)
+    )
+    await db.execute(
+        delete(AiUsage).where(AiUsage.user_id == uid)
+    )
+    await db.execute(
+        delete(GenSession).where(GenSession.user_id == uid)
+    )
+    # Question deletion cascades to question_tags (FK has CASCADE
+    # from migration 0001).
+    await db.execute(
+        delete(Question).where(Question.user_id == uid)
+    )
+    await db.execute(
+        delete(Tag).where(Tag.user_id == uid)
+    )
+    # Any pending verification rows for this email; cheap to clear.
+    await db.execute(
+        delete(EmailVerification).where(
+            EmailVerification.email == current_user.email
+        )
+    )
+
+    is_password_account = current_user.password_hash is not None
+
+    # shares.creator_id has ON DELETE CASCADE (migration 0005), so
+    # deleting the user row cascades to their shares.
+    await db.delete(current_user)
+
+    if is_password_account:
+        db.add(
+            DeletedUser(
+                email=current_user.email,
+                deleted_at=datetime.now(tz=timezone.utc),
+            )
+        )
+
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
