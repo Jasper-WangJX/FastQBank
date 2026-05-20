@@ -411,12 +411,17 @@ async def google_start(
     redirect_uri: str | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> GoogleStartOut:
-    settings = get_settings()
-    if not settings.google_client_id:
+    """Per Phase 11.3: pick the client_id/secret pair matching the
+    platform (web → google_web_*; desktop → google_desktop_*). Record
+    `platform` on the oauth_states row so /auth/google/callback can
+    resolve the same pair when the user returns."""
+    creds = _credentials_for(platform)
+    if creds is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="google sign-in not configured",
         )
+    client_id, _client_secret = creds
 
     resolved = _validate_redirect_uri(platform, redirect_uri)
 
@@ -428,13 +433,14 @@ async def google_start(
             state=state,
             code_verifier=pair.verifier,
             redirect_uri=resolved,
+            platform=platform,
             expires_at=now + timedelta(minutes=5),
         )
     )
     await db.commit()
 
     authorize_url = build_authorize_url(
-        client_id=settings.google_client_id,
+        client_id=client_id,
         redirect_uri=resolved,
         state=state,
         code_challenge=pair.challenge,
