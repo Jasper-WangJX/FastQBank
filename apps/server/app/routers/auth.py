@@ -39,12 +39,14 @@ from app.oauth_google import (
 )
 from app.ratelimit import limiter
 from app.schemas import (
+    DeleteAccountIn,
     GoogleCallbackIn,
     GoogleStartOut,
     LoginIn,
     ProvidersOut,
     RegisterIn,
     RequestCodeIn,
+    ResetPasswordIn,
     TokenOut,
     UserOut,
 )
@@ -439,3 +441,142 @@ async def google_callback(
         await db.commit()
         await db.refresh(user)
     return TokenOut(access_token=create_access_token(str(user.id)))
+
+
+# --- Reset password (authenticated; password accounts only) ---------------
+
+
+@router.post(
+    "/auth/request-password-reset-code",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+async def request_password_reset_code(
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Mail a 6-digit reset code to the logged-in user's email.
+
+    Google-only accounts (password_hash IS NULL) cannot reset — they
+    have no password to reset. Reuses EmailVerification with
+    purpose='reset' so the per-email 60-second cooldown and DELETE-
+    then-INSERT pattern from /auth/request-code apply unchanged.
+    """
+    if current_user.password_hash is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="password reset not available for this account",
+        )
+
+    now = datetime.now(tz=timezone.utc)
+
+    prior = await db.scalar(
+        select(EmailVerification).where(
+            EmailVerification.email == current_user.email,
+            EmailVerification.purpose == "reset",
+        )
+    )
+    if prior is not None:
+        elapsed = (now - prior.sent_at).total_seconds()
+        if elapsed < CODE_RESEND_SECONDS:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="please wait before requesting another code",
+            )
+        await db.execute(
+            delete(EmailVerification).where(
+                EmailVerification.email == current_user.email,
+                EmailVerification.purpose == "reset",
+            )
+        )
+
+    code = _new_code()
+    row = EmailVerification(
+        email=current_user.email,
+        code_hash=hash_password(code),
+        expires_at=now + timedelta(minutes=CODE_TTL_MINUTES),
+        attempts=0,
+        sent_at=now,
+        purpose="reset",
+    )
+    db.add(row)
+    await db.flush()
+
+    try:
+        await send_verification(current_user.email, code)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="mail delivery failed",
+        ) from e
+
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/auth/reset-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+async def reset_password(
+    body: ResetPasswordIn,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Verify the reset code, then replace password_hash with the
+    new value. Code lifecycle mirrors /auth/register exactly."""
+    if current_user.password_hash is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="password reset not available for this account",
+        )
+    if body.new_password != body.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="passwords do not match",
+        )
+
+    now = datetime.now(tz=timezone.utc)
+    row = await db.scalar(
+        select(EmailVerification).where(
+            EmailVerification.email == current_user.email,
+            EmailVerification.purpose == "reset",
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="verification required",
+        )
+    if row.expires_at < now:
+        await db.delete(row)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="code expired",
+        )
+    if row.attempts >= CODE_MAX_ATTEMPTS:
+        await db.delete(row)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="too many attempts",
+        )
+    if not verify_password(body.code, row.code_hash):
+        row.attempts += 1
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="invalid code",
+        )
+
+    # Code is good — consume it and update the password. We keep the
+    # existing JWT valid: its `sub` (user id) is unchanged, and
+    # rotating tokens here would log the user out of their current
+    # tab without buying real security.
+    await db.delete(row)
+    current_user.password_hash = hash_password(body.new_password)
+    await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
