@@ -267,10 +267,24 @@ async def register(
 async def login(
     body: LoginIn, db: AsyncSession = Depends(get_db)
 ) -> TokenOut:
-    user = await db.scalar(select(User).where(User.email == body.email))
-    # Same response for: no such email / wrong password / Google-only
-    # account (password_hash is NULL). Prevents probing for the
-    # existence of an account or its sign-in method.
+    # After Phase 11.1, the same email can have TWO rows (one password
+    # account + one Google account — independent identities). We must
+    # explicitly look for the PASSWORD row; otherwise db.scalar() may
+    # return the Google row first (Postgres ordering is implementation-
+    # defined without an ORDER BY) and the `password_hash IS NULL`
+    # check below would then 401 a perfectly valid password login.
+    user = await db.scalar(
+        select(User).where(
+            User.email == body.email,
+            User.password_hash.is_not(None),
+        )
+    )
+    # Same response for: no such password account / wrong password.
+    # A Google-only account for this email is invisible to this query,
+    # which is the desired anti-enumeration behavior.
+    # The `user.password_hash is None` clause is redundant given the
+    # narrowed query, kept as belt-and-braces + a static-type narrowing
+    # for verify_password's `str` parameter.
     if (
         user is None
         or user.password_hash is None
