@@ -381,8 +381,11 @@ async def google_callback(
             detail="google email not verified",
         )
 
+    # Phase 11.1: identify users by Google sub, NOT by email. A
+    # password account that happens to share this email is left
+    # strictly alone.
     user = await db.scalar(
-        select(User).where(User.email == identity.email)
+        select(User).where(User.google_id == identity.sub)
     )
     if user is None:
         user = User(
@@ -391,14 +394,6 @@ async def google_callback(
             google_id=identity.sub,
         )
         db.add(user)
-    else:
-        if user.google_id is None:
-            user.google_id = identity.sub
-        elif user.google_id != identity.sub:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="account conflict",
-            )
-    await db.commit()
-    await db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
     return TokenOut(access_token=create_access_token(str(user.id)))
