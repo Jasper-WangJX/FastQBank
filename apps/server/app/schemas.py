@@ -38,15 +38,18 @@ class TokenOut(BaseModel):
 
 
 class UserOut(BaseModel):
-    """Safe public view of a User. Whitelist of fields — password_hash is
-    simply not declared here, so it can never be serialized to a client.
-    from_attributes lets FastAPI build this straight from the ORM object."""
+    """Safe public view of a User. Whitelist of fields — password_hash
+    is simply not declared here, so it can never be serialized to a
+    client. `has_password` is derived in the /me handler so the
+    frontend can show / hide password-only features (e.g. the reset
+    password section in Settings)."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     email: str
     created_at: datetime
+    has_password: bool
 
 
 # ---------------------------------------------------------------------------
@@ -466,3 +469,24 @@ class GoogleCallbackIn(BaseModel):
 
     code: str = Field(min_length=1)
     state: str = Field(min_length=1)
+
+
+# ---------------------------------------------------------------------------
+# Phase 11.1 — Reset password + delete account
+# ---------------------------------------------------------------------------
+
+
+class ResetPasswordIn(BaseModel):
+    """Body for POST /auth/reset-password (authenticated)."""
+
+    code: str = Field(pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=8, max_length=72)
+    confirm_password: str = Field(min_length=8, max_length=72)
+
+
+class DeleteAccountIn(BaseModel):
+    """Body for POST /auth/delete-account (authenticated). The user
+    must re-type their own email to avoid one-click deletion of the
+    wrong account in a stale tab."""
+
+    confirm_email: EmailStr
