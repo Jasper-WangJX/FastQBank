@@ -39,6 +39,11 @@ class Settings(BaseSettings):
         "app://aqb",
     ]
 
+    # Stage 9 — used by /shares to build the public share_url returned
+    # on POST /shares. Local dev defaults to the Vite dev server origin;
+    # production overrides via FRONTEND_BASE_URL in deploy/.env.prod.
+    frontend_base_url: str = "http://localhost:5173"
+
     # --- Stage 6: AI integration ---
     # Keys default to None on purpose: the app must boot WITHOUT any AI
     # credentials (stages 0-5 stay fully functional). Each /ai endpoint

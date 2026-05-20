@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from app.db import engine
 from app.ratelimit import limiter
-from app.routers import ai, auth, questions, review, tags
+from app.routers import ai, auth, questions, review, shares, tags
 from app.settings import get_settings
 
 settings = get_settings()
@@ -45,6 +45,8 @@ app.include_router(questions.router)
 app.include_router(ai.router)
 # Stage 7 — Flashcards review endpoints
 app.include_router(review.router)
+# Stage 9 — Share-link cross-account transfer + bulk operations
+app.include_router(shares.router)
 
 
 # Liveness probe: the front-end HealthCheck component calls this on
