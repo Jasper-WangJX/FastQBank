@@ -444,14 +444,24 @@ class RequestCodeIn(BaseModel):
     purpose: Literal["register"] = "register"
 
 
+class GoogleProvidersOut(BaseModel):
+    """Per-platform availability of the Google sign-in button.
+
+    `web` is true when the server has both google_web_client_id AND
+    google_web_client_secret configured; `desktop` similarly for the
+    desktop credential pair. The frontend reads these via
+    GET /auth/providers and renders the button only for the platform
+    it is currently running on."""
+
+    web: bool
+    desktop: bool
+
+
 class ProvidersOut(BaseModel):
-    """Response of GET /auth/providers.
+    """Response of GET /auth/providers. Phase 11.3 reshape — `google`
+    is now an object (per-platform) instead of a single bool."""
 
-    Drives the frontend's "show / hide Google button" decision so a
-    misconfigured deploy doesn't render a broken control.
-    """
-
-    google: bool
+    google: GoogleProvidersOut
 
 
 class GoogleStartOut(BaseModel):

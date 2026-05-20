@@ -86,15 +86,21 @@ class Settings(BaseSettings):
     resend_api_key: str | None = None
     mail_from: str = "FastQBank <onboarding@resend.dev>"
 
-    # --- Phase 11: Google sign-in ---
-    # When client_id is None, /auth/providers returns {"google": false}
-    # and the frontend hides the button entirely.
-    # OAuth client must be of type "Desktop" so the loopback IP
-    # redirect_uri exception applies (any port on 127.0.0.1 is
-    # accepted without console-side pre-registration). The same
-    # client serves the web flow.
-    google_client_id: str | None = None
-    google_client_secret: str | None = None
+    # --- Phase 11.3: Google sign-in (one client per platform) ---
+    # Google enforces redirect-URI rules per client type, so we need
+    # TWO OAuth clients:
+    #   - Web Application:  https://<domain>/oauth/callback (per-URL
+    #     registration required). Used by the browser flow.
+    #   - Desktop app:      http://127.0.0.1:<port>/oauth/callback
+    #     (Google auto-allows ANY loopback port without registration).
+    #     Used by the Electron loopback flow.
+    # Either, both, or neither may be set — /auth/providers reports
+    # which platforms are available and the frontend gates the
+    # Continue-with-Google button accordingly.
+    google_web_client_id: str | None = None
+    google_web_client_secret: str | None = None
+    google_desktop_client_id: str | None = None
+    google_desktop_client_secret: str | None = None
     oauth_redirect_uri_web: str = "http://localhost:5173/oauth/callback"
 
     model_config = SettingsConfigDict(

@@ -53,6 +53,7 @@ from app.schemas import (
     DeleteAccountIn,
     ForgotPasswordIn,
     GoogleCallbackIn,
+    GoogleProvidersOut,
     GoogleStartOut,
     LoginIn,
     ProvidersOut,
@@ -314,10 +315,52 @@ async def me(current_user: CurrentUser) -> UserOut:
 @router.get("/auth/providers", response_model=ProvidersOut)
 async def providers() -> ProvidersOut:
     settings = get_settings()
-    return ProvidersOut(google=bool(settings.google_client_id))
+    return ProvidersOut(
+        google=GoogleProvidersOut(
+            web=bool(
+                settings.google_web_client_id
+                and settings.google_web_client_secret
+            ),
+            desktop=bool(
+                settings.google_desktop_client_id
+                and settings.google_desktop_client_secret
+            ),
+        )
+    )
 
 
 # --- Google OAuth ----------------------------------------------------------
+
+
+def _credentials_for(
+    platform: Literal["web", "desktop"],
+) -> tuple[str, str] | None:
+    """Return (client_id, client_secret) for the given platform, or
+    None if that platform is not configured.
+
+    The web and desktop flows MUST use different Google OAuth clients
+    because Google enforces redirect-URI rules per client type
+    (Desktop = loopback only; Web = exact-match registration). The
+    router centralises the lookup here so each endpoint asks for
+    "the right credentials for this platform" without sprinkling
+    settings reads.
+    """
+    s = get_settings()
+    if platform == "web":
+        if s.google_web_client_id and s.google_web_client_secret:
+            return s.google_web_client_id, s.google_web_client_secret
+        return None
+    if platform == "desktop":
+        if (
+            s.google_desktop_client_id
+            and s.google_desktop_client_secret
+        ):
+            return (
+                s.google_desktop_client_id,
+                s.google_desktop_client_secret,
+            )
+        return None
+    return None  # defensive; the Literal already excludes other values
 
 
 _LOOPBACK_REDIRECT_PREFIXES = (
@@ -368,12 +411,17 @@ async def google_start(
     redirect_uri: str | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> GoogleStartOut:
-    settings = get_settings()
-    if not settings.google_client_id:
+    """Per Phase 11.3: pick the client_id/secret pair matching the
+    platform (web → google_web_*; desktop → google_desktop_*). Record
+    `platform` on the oauth_states row so /auth/google/callback can
+    resolve the same pair when the user returns."""
+    creds = _credentials_for(platform)
+    if creds is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="google sign-in not configured",
         )
+    client_id, _client_secret = creds
 
     resolved = _validate_redirect_uri(platform, redirect_uri)
 
@@ -385,13 +433,14 @@ async def google_start(
             state=state,
             code_verifier=pair.verifier,
             redirect_uri=resolved,
+            platform=platform,
             expires_at=now + timedelta(minutes=5),
         )
     )
     await db.commit()
 
     authorize_url = build_authorize_url(
-        client_id=settings.google_client_id,
+        client_id=client_id,
         redirect_uri=resolved,
         state=state,
         code_challenge=pair.challenge,
@@ -403,13 +452,9 @@ async def google_start(
 async def google_callback(
     body: GoogleCallbackIn, db: AsyncSession = Depends(get_db)
 ) -> TokenOut:
-    settings = get_settings()
-    if not settings.google_client_id or not settings.google_client_secret:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="google sign-in not configured",
-        )
-
+    """Phase 11.3: resolve credentials from oauth_states.platform so
+    the token exchange and id_token audience match the client_id used
+    at start time."""
     row = await db.scalar(
         select(OAuthState).where(OAuthState.state == body.state)
     )
@@ -422,6 +467,7 @@ async def google_callback(
     expires_at = row.expires_at
     redirect_uri = row.redirect_uri
     code_verifier = row.code_verifier
+    platform = row.platform
     await db.delete(row)
     await db.commit()
     if expires_at < now:
@@ -430,17 +476,23 @@ async def google_callback(
             detail="invalid state",
         )
 
+    creds = _credentials_for(platform)  # type: ignore[arg-type]
+    if creds is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="google sign-in not configured",
+        )
+    client_id, client_secret = creds
+
     try:
         token = await exchange_code_for_id_token(
             code=body.code,
             code_verifier=code_verifier,
             redirect_uri=redirect_uri,
-            client_id=settings.google_client_id,
-            client_secret=settings.google_client_secret,
+            client_id=client_id,
+            client_secret=client_secret,
         )
-        identity = verify_id_token(
-            token, audience=settings.google_client_id
-        )
+        identity = verify_id_token(token, audience=client_id)
     except (RuntimeError, ValueError) as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -452,9 +504,7 @@ async def google_callback(
             detail="google email not verified",
         )
 
-    # Phase 11.1: identify users by Google sub, NOT by email. A
-    # password account that happens to share this email is left
-    # strictly alone.
+    # Phase 11.1 auto-merge logic (look up by google_id) unchanged.
     user = await db.scalar(
         select(User).where(User.google_id == identity.sub)
     )

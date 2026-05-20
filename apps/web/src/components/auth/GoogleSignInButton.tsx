@@ -57,7 +57,10 @@ export default function GoogleSignInButton({ mode }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  if (providers === null || !providers.google) return null;
+  if (providers === null) return null;
+  const desktop = getDesktop();
+  const enabled = desktop ? providers.google.desktop : providers.google.web;
+  if (!enabled) return null;
 
   async function onClick() {
     setErr(null);
