@@ -6,13 +6,20 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class RegisterIn(BaseModel):
-    """Request body for POST /auth/register."""
+    """Request body for POST /auth/register (Phase 11 onwards).
+
+    `code` is the 6-digit verification code returned by a prior
+    successful /auth/request-code for the same email + purpose
+    'register'. Without it, register fails with 400.
+    """
 
     email: EmailStr
-    # 8..72: lower bound is a minimum strength; the 72 upper bound mirrors
-    # bcrypt's byte limit so the user gets a clean 422 instead of silent
-    # truncation. (security.py still byte-truncates as a safety net.)
+    # 8..72: lower bound is a minimum strength; the 72 upper bound
+    # mirrors bcrypt's byte limit so the user gets a clean 422
+    # instead of silent truncation. (security.py still byte-truncates
+    # as a safety net.)
     password: str = Field(min_length=8, max_length=72)
+    code: str = Field(pattern=r"^\d{6}$")
 
 
 class LoginIn(BaseModel):
@@ -416,3 +423,46 @@ class BulkAddTagsOut(BaseModel):
 
     questions_updated: int
     links_added: int
+
+
+# ---------------------------------------------------------------------------
+# Phase 11 — Email verification + Google sign-in
+# ---------------------------------------------------------------------------
+
+
+class RequestCodeIn(BaseModel):
+    """Body for POST /auth/request-code.
+
+    `purpose` is a Literal so the schema rejects unexpected values up
+    front. Future flows (e.g. password reset) extend the literal.
+    """
+
+    email: EmailStr
+    purpose: Literal["register"] = "register"
+
+
+class ProvidersOut(BaseModel):
+    """Response of GET /auth/providers.
+
+    Drives the frontend's "show / hide Google button" decision so a
+    misconfigured deploy doesn't render a broken control.
+    """
+
+    google: bool
+
+
+class GoogleStartOut(BaseModel):
+    """Response of GET /auth/google/start. The frontend opens
+    `authorize_url` (window.location in web, shell.openExternal in
+    desktop) and remembers `state` only as a sanity check — the real
+    state→verifier map is server-side."""
+
+    authorize_url: str
+    state: str
+
+
+class GoogleCallbackIn(BaseModel):
+    """Body for POST /auth/google/callback."""
+
+    code: str = Field(min_length=1)
+    state: str = Field(min_length=1)
