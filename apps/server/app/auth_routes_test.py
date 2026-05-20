@@ -25,6 +25,9 @@ EXPECTED_ROUTES: dict[str, set[str]] = {
     "/auth/providers": {"GET"},
     "/auth/google/start": {"GET"},
     "/auth/google/callback": {"POST"},
+    "/auth/request-password-reset-code": {"POST"},
+    "/auth/reset-password": {"POST"},
+    "/auth/delete-account": {"POST"},
     "/me": {"GET"},
 }
 
