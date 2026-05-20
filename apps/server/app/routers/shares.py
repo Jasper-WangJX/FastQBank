@@ -16,7 +16,9 @@ foreign / missing ids.
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
@@ -111,7 +113,7 @@ async def create_share(
         try:
             await db.commit()
             break
-        except Exception:  # IntegrityError on token collision
+        except IntegrityError:  # token collision
             await db.rollback()
             continue
     else:
@@ -125,6 +127,10 @@ async def create_share(
     return ShareCreateOut(token=token, share_url=f"{base}/s/{token}")
 
 
+# IMPORTANT: any static `/shares/<word>` route must be declared ABOVE
+# `/shares/{token}` below — FastAPI matches in registration order, and
+# the parametric route will otherwise capture the request (see the
+# previously-fixed `/shares/me` vs `{token}` shadowing bug).
 @router.get("/shares/me", response_model=MyShareListOut)
 async def list_my_shares(
     user: CurrentUser,
@@ -244,14 +250,24 @@ async def import_share(
     ]
     skipped = len(payload.questions) - len(new_questions)
 
-    # Tag find-or-create — batched, deduped across all questions.
+    # Tag find-or-create — batched, race-safe.
+    # ON CONFLICT DO NOTHING under the partial unique index handles a
+    # concurrent same-user import (or double-click) without raising
+    # IntegrityError. We re-SELECT afterwards to pick up both the rows
+    # we just inserted and the ones a parallel request inserted.
     needed_names: set[str] = set()
     for qq in new_questions:
         needed_names.update(qq.tag_names)
 
+    tags_created = 0
+    tags_reused = 0
     existing_tags_by_name: dict[str, Tag] = {}
+
     if needed_names:
-        rows = (
+        # Count existing (live) tags BEFORE we attempt any insert, so
+        # `tags_reused` is "names that were already present in this
+        # user's tag list, not counting names created by this import".
+        pre_existing = (
             await db.scalars(
                 select(Tag).where(
                     Tag.user_id == user.id,
@@ -260,16 +276,44 @@ async def import_share(
                 )
             )
         ).all()
-        existing_tags_by_name = {t.name: t for t in rows}
+        tags_reused = len(pre_existing)
+        existing_tags_by_name = {t.name: t for t in pre_existing}
 
-    tags_reused = len(existing_tags_by_name)
-    tags_created = 0
-    for name in needed_names - existing_tags_by_name.keys():
-        t = Tag(user_id=user.id, name=name)
-        db.add(t)
-        await db.flush()
-        existing_tags_by_name[name] = t
-        tags_created += 1
+        # Batch-insert the new names with ON CONFLICT DO NOTHING. The
+        # partial unique index `uq_tags_user_name` (deleted_at IS NULL)
+        # is the conflict target, so a concurrent insert by the same
+        # user is silently absorbed.
+        to_create = [
+            n for n in needed_names if n not in existing_tags_by_name
+        ]
+        if to_create:
+            stmt = (
+                pg_insert(Tag)
+                .values(
+                    [{"user_id": user.id, "name": n} for n in to_create]
+                )
+                .on_conflict_do_nothing(
+                    index_elements=["user_id", "name"],
+                    index_where=text("deleted_at IS NULL"),
+                )
+            )
+            await db.execute(stmt)
+
+            # Re-SELECT to capture both our newly-inserted rows and any
+            # that a concurrent request inserted while we were running.
+            rows = (
+                await db.scalars(
+                    select(Tag).where(
+                        Tag.user_id == user.id,
+                        Tag.name.in_(to_create),
+                        Tag.deleted_at.is_(None),
+                    )
+                )
+            ).all()
+            for t in rows:
+                if t.name not in existing_tags_by_name:
+                    existing_tags_by_name[t.name] = t
+                    tags_created += 1
 
     # Insert questions + their tag links
     for qq in new_questions:
