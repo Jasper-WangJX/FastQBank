@@ -76,6 +76,14 @@ export interface DesktopBridge {
     isMaximized(): Promise<boolean>;
     onMaximizedChange(cb: (maximized: boolean) => void): () => void;
   };
+  /** Phase 11 — Google OAuth via loopback server. */
+  oauth: {
+    startLoopback(): Promise<{ port: number }>;
+    openExternal(url: string): void;
+    onCallback(
+      cb: (payload: { code: string; state: string }) => void,
+    ): () => void;
+  };
 }
 
 declare global {

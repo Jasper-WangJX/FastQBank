@@ -1,58 +1,56 @@
-// Register page — "Sapphire Console" visual language.
-// Phase 11: split into two steps —
-//   Step 1 ("request"): ask for email, POST /auth/request-code,
-//   Step 2 ("verify"): show code + password + confirm-password
-//     fields, POST /auth/register on submit.
-// Google sign-in button added below the primary CTA, sharing
-// AuthContext.providers state.
+// Phase 11.2 — Forgot password page.
+//
+// Visual clone of RegisterPage (Sapphire Console card, vertical
+// guide-line texture, CRT sweep, mono footer) so the auth pages
+// keep a unified look. Two-step state machine:
+//   Step 1 ("request"): email → POST /auth/forgot-password
+//   Step 2 ("verify"):  code + new_password + confirm →
+//                       POST /auth/reset-password-public
+// On success, navigate("/login", { state: { passwordReset: true } })
+// — LoginPage renders a green "Password updated" banner from that.
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Circle, KeyRound, Lock, Mail, Plus, Send } from "lucide-react";
-import { useAuth } from "../auth/AuthContext";
-import { ApiError, apiFetch } from "../lib/api";
+import { Circle, KeyRound, Lock, Mail, RotateCcw, Send } from "lucide-react";
+import { ApiError } from "../lib/api";
+import {
+  forgotPassword,
+  resetPasswordPublic,
+} from "../lib/account";
 import { getDesktop } from "../lib/desktop";
 import WindowControls from "../components/WindowControls";
 import { DRAG_STYLE, NO_DRAG_STYLE } from "../components/windowChrome";
-import GoogleSignInButton from "../components/auth/GoogleSignInButton";
-
-interface TokenOut {
-  access_token: string;
-  token_type: string;
-}
 
 const BUILD_TAG = "v0.9.0";
 const RESEND_COOLDOWN = 60; // seconds
 
 type Step = "request" | "verify";
 
+// Local copy of RegisterPage's friendlyError, narrowed to the
+// strings this flow can actually produce. Kept inline so the page
+// is self-contained — extracting a shared module is a worthwhile
+// follow-up if a third reset surface ever appears.
 function friendlyError(detail: string | undefined): string {
   if (!detail) return "Network error";
-  if (detail === "email already registered")
-    return "Already registered. Sign in instead.";
-  if (detail === "please wait before requesting another code")
-    return "Please wait a moment before requesting another code.";
   if (detail === "invalid code") return "Invalid code — try again.";
   if (detail === "code expired")
     return "Code expired. Please request a new one.";
   if (detail === "too many attempts")
     return "Too many attempts. Please request a new code.";
-  if (detail === "verification required")
-    return "Please verify your email first.";
+  if (detail === "passwords do not match") return "Passwords do not match.";
   if (detail === "mail delivery failed")
     return "Could not send the email. Try again in a moment.";
   return detail;
 }
 
-export default function RegisterPage() {
-  const { login } = useAuth();
+export default function ForgotPasswordPage() {
   const navigate = useNavigate();
   const desktop = getDesktop();
 
   const [step, setStep] = useState<Step>("request");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [confirmTouched, setConfirmTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +59,7 @@ export default function RegisterPage() {
   const tickRef = useRef<number | null>(null);
 
   const passwordsMatch =
-    !confirmTouched || password === confirmPassword || confirmPassword === "";
+    !confirmTouched || newPassword === confirmPassword || confirmPassword === "";
 
   // 60s "resend" cooldown timer.
   useEffect(() => {
@@ -82,10 +80,7 @@ export default function RegisterPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await apiFetch<void>("/auth/request-code", {
-        method: "POST",
-        body: { email, purpose: "register" },
-      });
+      await forgotPassword(email);
       setStep("verify");
       setResendAfter(RESEND_COOLDOWN);
     } catch (err) {
@@ -97,10 +92,10 @@ export default function RegisterPage() {
     }
   }
 
-  async function submitRegister(e: FormEvent) {
+  async function submitReset(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (password !== confirmPassword) {
+    if (newPassword !== confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
@@ -110,21 +105,20 @@ export default function RegisterPage() {
     }
     setSubmitting(true);
     try {
-      const data = await apiFetch<TokenOut>("/auth/register", {
-        method: "POST",
-        body: { email, password, code },
+      await resetPasswordPublic({
+        email,
+        code,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
       });
-      login(data.access_token);
-      navigate("/", { replace: true });
+      navigate("/login", {
+        replace: true,
+        state: { passwordReset: true },
+      });
     } catch (err) {
       const detail = err instanceof ApiError ? err.message : undefined;
       setError(friendlyError(detail));
-      // Snap back to step 1 if the code is unusable for further tries.
-      if (
-        detail === "code expired" ||
-        detail === "too many attempts" ||
-        detail === "verification required"
-      ) {
+      if (detail === "code expired" || detail === "too many attempts") {
         setStep("request");
         setCode("");
         setResendAfter(0);
@@ -203,18 +197,18 @@ export default function RegisterPage() {
 
       <main className="relative z-10 flex flex-1 items-center justify-center px-4 py-10 pb-16">
         <form
-          onSubmit={step === "request" ? requestCode : submitRegister}
+          onSubmit={step === "request" ? requestCode : submitReset}
           className="w-[420px] max-w-full rounded-sm border border-slate-200 bg-white px-6 py-6"
           noValidate
         >
           <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
-            MODULE / REGISTER
+            MODULE / RESET
           </div>
           <h1 className="mt-1 text-[22px] font-semibold tracking-tight text-slate-900">
-            Create your FastQBank account
+            Reset your password
           </h1>
           <p className="mt-1 font-mono text-[12px] text-slate-600">
-            &gt;_ {step === "request" ? "provision new account" : "verify and set password"}
+            &gt;_ {step === "request" ? "request a 6-digit code" : "verify and set a new password"}
           </p>
 
           {error && (
@@ -262,7 +256,7 @@ export default function RegisterPage() {
                     SENDING…
                   </span>
                 ) : (
-                  <span>REQUEST CODE</span>
+                  <span>SEND CODE</span>
                 )}
               </button>
             </>
@@ -330,10 +324,10 @@ export default function RegisterPage() {
 
               <div className="mt-3">
                 <label
-                  htmlFor="auth-password"
+                  htmlFor="auth-new-pw"
                   className="block font-mono text-[11px] uppercase tracking-[0.1em] text-slate-500"
                 >
-                  Password
+                  New password
                 </label>
                 <div className="relative mt-1">
                   <Lock
@@ -343,14 +337,14 @@ export default function RegisterPage() {
                     className="pointer-events-none absolute left-2.5 top-2.5 text-slate-400"
                   />
                   <input
-                    id="auth-password"
+                    id="auth-new-pw"
                     type="password"
                     required
                     minLength={8}
                     maxLength={72}
                     autoComplete="new-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
                     className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-8 pr-3 text-sm text-slate-900 outline-none transition-colors duration-150 focus:border-[#1E3A8A]"
                   />
                 </div>
@@ -361,10 +355,10 @@ export default function RegisterPage() {
 
               <div className="mt-3">
                 <label
-                  htmlFor="auth-password-confirm"
+                  htmlFor="auth-confirm-pw"
                   className="block font-mono text-[11px] uppercase tracking-[0.1em] text-slate-500"
                 >
-                  Confirm password
+                  Confirm new password
                 </label>
                 <div className="relative mt-1">
                   <Lock
@@ -374,7 +368,7 @@ export default function RegisterPage() {
                     className="pointer-events-none absolute left-2.5 top-2.5 text-slate-400"
                   />
                   <input
-                    id="auth-password-confirm"
+                    id="auth-confirm-pw"
                     type="password"
                     required
                     minLength={8}
@@ -395,25 +389,28 @@ export default function RegisterPage() {
 
               <button
                 type="submit"
-                disabled={submitting || !passwordsMatch || code.length !== 6}
+                disabled={
+                  submitting ||
+                  !passwordsMatch ||
+                  code.length !== 6 ||
+                  newPassword.length < 8
+                }
                 className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-sm border border-[#1E3A8A] bg-[#1E3A8A] px-3 py-2 font-mono text-[12.5px] uppercase tracking-[0.08em] text-white transition-colors duration-150 hover:bg-[#0B3B8C] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <Plus size={14} strokeWidth={1.5} aria-hidden />
+                <RotateCcw size={14} strokeWidth={1.5} aria-hidden />
                 {submitting ? (
                   <span style={{ animation: "fqb-auth-blink 1.5s ease-in-out infinite" }}>
-                    PROVISIONING…
+                    RESETTING…
                   </span>
                 ) : (
-                  <span>CREATE ACCOUNT</span>
+                  <span>RESET PASSWORD</span>
                 )}
               </button>
             </>
           )}
 
-          {step === "request" && <GoogleSignInButton mode="signup" />}
-
           <p className="mt-5 font-mono text-[12px] text-slate-600">
-            &gt; already registered?{" "}
+            &gt; remembered it?{" "}
             <Link
               to="/login"
               className="text-slate-900 underline underline-offset-2 transition-colors duration-150 hover:text-[#1E3A8A]"

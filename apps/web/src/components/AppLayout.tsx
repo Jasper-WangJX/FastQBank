@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Camera,
-  HelpCircle,
+  Settings,
   LogOut,
   Plus,
   RefreshCw,
@@ -18,6 +18,7 @@ import { useAuth } from "../auth/AuthContext";
 import { getDesktop } from "../lib/desktop";
 import { splitQuestion } from "../lib/ocr/splitter";
 import WindowControls from "./WindowControls";
+import SettingsModal from "./settings/SettingsModal";
 import { DRAG_STYLE, NO_DRAG_STYLE } from "./windowChrome";
 
 const BUILD_TAG = "v0.9.0";
@@ -42,6 +43,7 @@ export default function AppLayout() {
   const [ocrError, setOcrError] = useState<string | null>(null);
   // Clock in the status bar — refreshed each minute, monospace.
   const [now, setNow] = useState(() => new Date());
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Resolve the Electron bridge once per render. Undefined in the
   // browser; truthy inside the desktop shell — drives both the OCR
@@ -217,11 +219,12 @@ export default function AppLayout() {
             )}
             <button
               type="button"
-              title="Help"
-              aria-label="Help"
+              title="Settings"
+              aria-label="Settings"
+              onClick={() => setSettingsOpen(true)}
               className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 text-slate-500 transition-colors duration-150 hover:border-[#1E3A8A] hover:text-[#1E3A8A]"
             >
-              <HelpCircle size={14} strokeWidth={1.5} />
+              <Settings size={14} strokeWidth={1.5} />
             </button>
             <button
               type="button"
@@ -287,6 +290,8 @@ export default function AppLayout() {
           <span className="text-white/60">FastQBank · {BUILD_TAG}</span>
         </span>
       </footer>
+
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

@@ -6,13 +6,20 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class RegisterIn(BaseModel):
-    """Request body for POST /auth/register."""
+    """Request body for POST /auth/register (Phase 11 onwards).
+
+    `code` is the 6-digit verification code returned by a prior
+    successful /auth/request-code for the same email + purpose
+    'register'. Without it, register fails with 400.
+    """
 
     email: EmailStr
-    # 8..72: lower bound is a minimum strength; the 72 upper bound mirrors
-    # bcrypt's byte limit so the user gets a clean 422 instead of silent
-    # truncation. (security.py still byte-truncates as a safety net.)
+    # 8..72: lower bound is a minimum strength; the 72 upper bound
+    # mirrors bcrypt's byte limit so the user gets a clean 422
+    # instead of silent truncation. (security.py still byte-truncates
+    # as a safety net.)
     password: str = Field(min_length=8, max_length=72)
+    code: str = Field(pattern=r"^\d{6}$")
 
 
 class LoginIn(BaseModel):
@@ -31,15 +38,18 @@ class TokenOut(BaseModel):
 
 
 class UserOut(BaseModel):
-    """Safe public view of a User. Whitelist of fields — password_hash is
-    simply not declared here, so it can never be serialized to a client.
-    from_attributes lets FastAPI build this straight from the ORM object."""
+    """Safe public view of a User. Whitelist of fields — password_hash
+    is simply not declared here, so it can never be serialized to a
+    client. `has_password` is derived in the /me handler so the
+    frontend can show / hide password-only features (e.g. the reset
+    password section in Settings)."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     email: str
     created_at: datetime
+    has_password: bool
 
 
 # ---------------------------------------------------------------------------
@@ -416,3 +426,91 @@ class BulkAddTagsOut(BaseModel):
 
     questions_updated: int
     links_added: int
+
+
+# ---------------------------------------------------------------------------
+# Phase 11 — Email verification + Google sign-in
+# ---------------------------------------------------------------------------
+
+
+class RequestCodeIn(BaseModel):
+    """Body for POST /auth/request-code.
+
+    `purpose` is a Literal so the schema rejects unexpected values up
+    front. Future flows (e.g. password reset) extend the literal.
+    """
+
+    email: EmailStr
+    purpose: Literal["register"] = "register"
+
+
+class ProvidersOut(BaseModel):
+    """Response of GET /auth/providers.
+
+    Drives the frontend's "show / hide Google button" decision so a
+    misconfigured deploy doesn't render a broken control.
+    """
+
+    google: bool
+
+
+class GoogleStartOut(BaseModel):
+    """Response of GET /auth/google/start. The frontend opens
+    `authorize_url` (window.location in web, shell.openExternal in
+    desktop) and remembers `state` only as a sanity check — the real
+    state→verifier map is server-side."""
+
+    authorize_url: str
+    state: str
+
+
+class GoogleCallbackIn(BaseModel):
+    """Body for POST /auth/google/callback."""
+
+    code: str = Field(min_length=1)
+    state: str = Field(min_length=1)
+
+
+# ---------------------------------------------------------------------------
+# Phase 11.1 — Reset password + delete account
+# ---------------------------------------------------------------------------
+
+
+class ResetPasswordIn(BaseModel):
+    """Body for POST /auth/reset-password (authenticated)."""
+
+    code: str = Field(pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=8, max_length=72)
+    confirm_password: str = Field(min_length=8, max_length=72)
+
+
+class DeleteAccountIn(BaseModel):
+    """Body for POST /auth/delete-account (authenticated). The user
+    must re-type their own email to avoid one-click deletion of the
+    wrong account in a stale tab."""
+
+    confirm_email: EmailStr
+
+
+# ---------------------------------------------------------------------------
+# Phase 11.2 — Public forgot-password flow
+# ---------------------------------------------------------------------------
+
+
+class ForgotPasswordIn(BaseModel):
+    """Body for POST /auth/forgot-password (public). The endpoint
+    always responds 204, even if no password account exists for the
+    email — preventing email-enumeration probes."""
+
+    email: EmailStr
+
+
+class ResetPasswordPublicIn(BaseModel):
+    """Body for POST /auth/reset-password-public. The public sibling
+    of ResetPasswordIn — also carries `email` since the caller has
+    no JWT to identify themselves."""
+
+    email: EmailStr
+    code: str = Field(pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=8, max_length=72)
+    confirm_password: str = Field(min_length=8, max_length=72)

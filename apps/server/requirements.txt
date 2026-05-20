@@ -42,3 +42,10 @@ Pillow~=11.0
 # Required by FastAPI to parse the multipart upload in /ai/parse-question
 # (the cropped screenshot + the OCR text hint).
 python-multipart~=0.0.20
+
+# --- Phase 11: Google sign-in (new) ---
+# Verifies Google id_tokens locally (signature + audience + issuer).
+# The [requests] extra pulls in `requests` for the HTTP transport
+# used by google.auth.transport.requests; cryptography comes in as a
+# direct google-auth dep.
+google-auth[requests]~=2.34

@@ -4,11 +4,12 @@
 // Behavior is unchanged: POST /auth/login → store token → redirect to "/".
 
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Circle, CornerDownLeft, Lock, Mail } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, apiFetch } from "../lib/api";
 import { getDesktop } from "../lib/desktop";
+import GoogleSignInButton from "../components/auth/GoogleSignInButton";
 import WindowControls from "../components/WindowControls";
 import { DRAG_STYLE, NO_DRAG_STYLE } from "../components/windowChrome";
 
@@ -23,6 +24,9 @@ export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const desktop = getDesktop();
+  const location = useLocation();
+  const passwordResetSuccess =
+    (location.state as { passwordReset?: boolean } | null)?.passwordReset === true;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +143,12 @@ export default function LoginPage() {
             &gt;_ enter credentials below
           </p>
 
+          {passwordResetSuccess && (
+            <div className="mt-4 rounded-sm border border-emerald-300 bg-emerald-50 px-3 py-2 font-mono text-[12px] text-emerald-800">
+              [ AUTH ] · Password updated — please sign in with your new password.
+            </div>
+          )}
+
           {error && (
             <div className="mt-4 rounded-sm border border-red-300 bg-red-50 px-3 py-2 font-mono text-[12px] text-red-700">
               [ AUTH ] · {error}
@@ -214,6 +224,18 @@ export default function LoginPage() {
               <span>SIGN IN</span>
             )}
           </button>
+
+          <p className="mt-3 font-mono text-[12px] text-slate-600">
+            &gt; forgot your password?{" "}
+            <Link
+              to="/forgot-password"
+              className="text-slate-900 underline underline-offset-2 transition-colors duration-150 hover:text-[#1E3A8A]"
+            >
+              Reset it
+            </Link>
+          </p>
+
+          <GoogleSignInButton mode="signin" />
 
           <p className="mt-5 font-mono text-[12px] text-slate-600">
             &gt; need an account?{" "}

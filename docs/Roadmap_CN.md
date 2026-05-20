@@ -32,6 +32,9 @@
 | 8.5 标签扁平化 + 跨页搜索 | ✅ 已完成 (2026-05-19) | tags 取消层级、CRUD 走抽屉、列表/复习/录题三页统一的"搜索 + AND/OR"过滤；为阶段 9 按 name 携带 tag 做准备 |
 | 9 批量操作 + 链接分享 / 导入 | ✅ 已完成 (2026-05-19) | 题库页多选 → 批量删除/统一加tag/打包成链接；粘贴链接导入题目（按 UUID 跳重） |
 | 10 打磨 + Windows 安装包 | ⬜ 待办 | electron-builder 打包、产品化收尾 |
+| 11 账号安全加固 | ✅ 已完成 (2026-05-20) | 邮箱验证码注册（Resend，免配置时降级为控制台）、密码二次确认、Google 一键登录（Web + Desktop 桌面端走 127.0.0.1 一次性 loopback 服务器） |
+| 11.1 帐号独立 + 设置面板 + 注销 | ✅ 已完成 (2026-05-20) | 同邮箱 Google + 密码账号成为两行独立账户；齿轮按钮替换帮助按钮，打开设置面板可重设密码（仅密码账号）或注销账号；密码账号注销后该邮箱 24h 内禁止密码重新注册 |
+| 11.2 忘记密码 (公开重设) | ✅ 已完成 (2026-05-20) | LoginPage 加 "Reset it" 链接到新页面 `/forgot-password`，输入邮箱 → 收码 → 设新密码 → 跳回 `/login` 用新密码登入；反枚举：邮箱不存在也 204，错码与"无账号"同一报错 |
 
 
 ---
@@ -301,6 +304,44 @@
 
 ### 退出标准
 能把 `.exe` 发给朋友，他装上后能登录、录题、复习。
+
+---
+
+## 阶段 11 — 账号安全加固
+
+> **状态：✅ 已完成 (2026-05-20)。** 设计与计划见 `docs/superpowers/specs/2026-05-20-account-security-hardening-design.md` 与 `docs/superpowers/plans/2026-05-20-account-security-hardening.md`。
+
+### 任务
+- 后端：新增 `email_verifications` / `oauth_states` 表 + `users.google_id`（迁移 0006），新增 `/auth/request-code`、`/auth/providers`、`/auth/google/start`、`/auth/google/callback`；改造 `/auth/register` 要求 6 位验证码、`/auth/login` 显式拒绝 Google-only 账户。
+- 邮件：`apps/server/app/mail.py` 走 Resend HTTPS，`RESEND_API_KEY` 留空时降级为控制台 stub。
+- Google：`google-auth[requests]` 本地校验 id_token + PKCE，按邮箱自动合并密码账户与 Google 账户到同一个 user_id。
+- 前端：`AuthContext` 拉一次 `/auth/providers` 控制按钮显隐；`RegisterPage` 重写为两步状态机（请求验证码 → 输入验证码 + 密码 + 二次确认）；`GoogleSignInButton` 共享给登录页和注册页；新增 `/oauth/callback` web 路由。
+- 桌面端：Electron 主进程一次性 `http.createServer(127.0.0.1:0)` 收 Google 回调，IPC `oauth:start-loopback` + `oauth:open-external` + `oauth:callback`；`shell.openExternal` 白名单只允许 `https://accounts.google.com`。
+
+### 退出标准
+注册页输入两次密码不一致即时报错；同邮箱 60 秒内不能再次申请验证码；错误验证码 5 次后该验证记录被清除；`RESEND_API_KEY` 未配置时验证码打到 uvicorn 日志；`GOOGLE_CLIENT_ID` 未配置时 Google 按钮在两页都不渲染；Web Google 流程跳转 → consent → `/oauth/callback` → 题库主页；Desktop Google 流程通过默认浏览器完成后渲染进程自动登录；密码账户与同邮箱 Google 账户首次登入自动合并到同一行，事后密码登录仍可用。
+
+---
+
+## 阶段 11.1 — 帐号独立 + 设置面板 + 注销
+
+> **状态：✅ 已完成 (2026-05-20)。** 设计：`docs/superpowers/specs/2026-05-20-account-settings-and-cancellation-design.md`。计划：`docs/superpowers/plans/2026-05-20-account-settings-and-cancellation.md`。
+
+### 主要改动
+- DB 迁移 0007：用 `(email) WHERE google_id IS NULL` 与 `(email) WHERE google_id IS NOT NULL` 两个 partial unique index 替换 `users.email` 的全局唯一约束；新增 `deleted_users (email, deleted_at)` 表。
+- 后端：`/auth/google/callback` 改为按 Google `sub` 查询用户（不再按邮箱合并）；`/auth/request-code` 与 `/auth/register` 的"已注册"检查窄化为 `password_hash IS NOT NULL`；新增 `/auth/request-password-reset-code`、`/auth/reset-password`、`/auth/delete-account` 三个认证接口；`/me` 增加 `has_password` 字段。
+- 前端：`AuthContext` 缓存 `/me` 为 `currentUser`；`AppLayout` 顶部的占位 Help 按钮换成 Settings（齿轮）按钮，打开 `SettingsModal` —— 包含 Reset password（仅密码账号显示）与 Delete account 两部分。
+
+---
+
+## 阶段 11.2 — 忘记密码（公开重设）
+
+> **状态：✅ 已完成 (2026-05-20)。** 设计：`docs/superpowers/specs/2026-05-20-forgot-password-design.md`。计划：`docs/superpowers/plans/2026-05-20-forgot-password.md`。
+
+### 主要改动
+- 后端：新增两个不需要 JWT 的端点 `POST /auth/forgot-password`（按邮箱发 6 位重设码；无密码账号则静默 204）与 `POST /auth/reset-password-public`（邮箱 + 码 + 新密码 + 确认 → 改 `password_hash`）。两者都共用 Phase 11.1 的 `EmailVerification(purpose='reset')`。
+- 反邮箱枚举：请求端点对任何邮箱都 204；完成端点把"无账号"与"无 pending code"统一报 `400 invalid code`，与错码完全一致。
+- 前端：`/forgot-password` 新页面（两步状态机克隆自 RegisterPage）；LoginPage 加 "Reset it" 链接；重设成功后跳 `/login` 带绿色 `[ AUTH ] · Password updated` 提示条。
 
 ---
 
