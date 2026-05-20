@@ -452,13 +452,9 @@ async def google_start(
 async def google_callback(
     body: GoogleCallbackIn, db: AsyncSession = Depends(get_db)
 ) -> TokenOut:
-    settings = get_settings()
-    if not settings.google_client_id or not settings.google_client_secret:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="google sign-in not configured",
-        )
-
+    """Phase 11.3: resolve credentials from oauth_states.platform so
+    the token exchange and id_token audience match the client_id used
+    at start time."""
     row = await db.scalar(
         select(OAuthState).where(OAuthState.state == body.state)
     )
@@ -471,6 +467,7 @@ async def google_callback(
     expires_at = row.expires_at
     redirect_uri = row.redirect_uri
     code_verifier = row.code_verifier
+    platform = row.platform
     await db.delete(row)
     await db.commit()
     if expires_at < now:
@@ -479,17 +476,23 @@ async def google_callback(
             detail="invalid state",
         )
 
+    creds = _credentials_for(platform)  # type: ignore[arg-type]
+    if creds is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="google sign-in not configured",
+        )
+    client_id, client_secret = creds
+
     try:
         token = await exchange_code_for_id_token(
             code=body.code,
             code_verifier=code_verifier,
             redirect_uri=redirect_uri,
-            client_id=settings.google_client_id,
-            client_secret=settings.google_client_secret,
+            client_id=client_id,
+            client_secret=client_secret,
         )
-        identity = verify_id_token(
-            token, audience=settings.google_client_id
-        )
+        identity = verify_id_token(token, audience=client_id)
     except (RuntimeError, ValueError) as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -501,9 +504,7 @@ async def google_callback(
             detail="google email not verified",
         )
 
-    # Phase 11.1: identify users by Google sub, NOT by email. A
-    # password account that happens to share this email is left
-    # strictly alone.
+    # Phase 11.1 auto-merge logic (look up by google_id) unchanged.
     user = await db.scalar(
         select(User).where(User.google_id == identity.sub)
     )
