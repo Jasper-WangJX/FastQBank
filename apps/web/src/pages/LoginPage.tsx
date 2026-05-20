@@ -9,6 +9,7 @@ import { Circle, CornerDownLeft, Lock, Mail } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { ApiError, apiFetch } from "../lib/api";
 import { getDesktop } from "../lib/desktop";
+import GoogleSignInButton from "../components/auth/GoogleSignInButton";
 import WindowControls from "../components/WindowControls";
 import { DRAG_STYLE, NO_DRAG_STYLE } from "../components/windowChrome";
 
@@ -214,6 +215,8 @@ export default function LoginPage() {
               <span>SIGN IN</span>
             )}
           </button>
+
+          <GoogleSignInButton mode="signin" />
 
           <p className="mt-5 font-mono text-[12px] text-slate-600">
             &gt; need an account?{" "}
