@@ -60,11 +60,24 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[PyUUID] = _uuid_pk()
-    # unique=True creates the unique constraint + index used for both
-    # login lookup and the duplicate-email check on register.
     email: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
-    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    # Nullable: Google-only accounts have no password. The DB-level
+    # CHECK ck_users_auth_method (migration 0006) guarantees at least
+    # one of password_hash / google_id is non-null on every row.
+    password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Google `sub` claim — opaque, stable per user per OAuth client.
+    # NOT the email (the email may change at the Google side).
+    google_id: Mapped[str | None] = mapped_column(
+        Text, nullable=True, unique=True
+    )
     created_at: Mapped[datetime] = _now_column()
+
+    __table_args__ = (
+        CheckConstraint(
+            "password_hash IS NOT NULL OR google_id IS NOT NULL",
+            name="ck_users_auth_method",
+        ),
+    )
 
 
 class Tag(Base):
@@ -286,4 +299,59 @@ class Share(Base):
             "creator_id",
             postgresql_where=text("deleted_at IS NULL"),
         ),
+    )
+
+
+class EmailVerification(Base):
+    """Pending email-verification record for the register flow
+    (and any future password-reset flow via the `purpose` column).
+
+    Only ONE row exists per (email, purpose) at a time: the router
+    DELETEs any prior row before INSERTing a fresh one. A successful
+    /auth/register also deletes the matching row, so the table never
+    accumulates expired or "consumed but lingering" data.
+    """
+
+    __tablename__ = "email_verifications"
+
+    id: Mapped[PyUUID] = _uuid_pk()
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    # bcrypt hash of the 6-digit code (never store the code itself).
+    code_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    sent_at: Mapped[datetime] = _now_column()
+    purpose: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_email_verifications_email_purpose",
+            "email",
+            "purpose",
+        ),
+    )
+
+
+class OAuthState(Base):
+    """Per-attempt PKCE state for Google sign-in.
+
+    Inserted by /auth/google/start, deleted by /auth/google/callback
+    on use. `redirect_uri` is recorded at start time because Google's
+    token exchange validates that exchange's redirect_uri equals the
+    authorize_url's; for desktop loopback the value is per-attempt.
+    """
+
+    __tablename__ = "oauth_states"
+
+    id: Mapped[PyUUID] = _uuid_pk()
+    state: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    code_verifier: Mapped[str] = mapped_column(Text, nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = _now_column()
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
     )
