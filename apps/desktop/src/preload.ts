@@ -60,4 +60,16 @@ contextBridge.exposeInMainWorld("desktop", {
     onMaximizedChange: (cb: Listener<boolean>) =>
       sub<boolean>("window:maximized", cb),
   },
+
+  // Phase 11 — Google OAuth via a single-use loopback server in the
+  // main process. The renderer calls startLoopback BEFORE opening the
+  // browser so there is no race against the inbound callback.
+  oauth: {
+    startLoopback: (): Promise<{ port: number }> =>
+      ipcRenderer.invoke("oauth:start-loopback"),
+    openExternal: (url: string) =>
+      ipcRenderer.send("oauth:open-external", url),
+    onCallback: (cb: Listener<{ code: string; state: string }>) =>
+      sub<{ code: string; state: string }>("oauth:callback", cb),
+  },
 });

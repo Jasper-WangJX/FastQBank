@@ -65,9 +65,12 @@ export default function GoogleSignInButton({ mode }: Props) {
     try {
       const desktop = getDesktop();
       if (desktop) {
-        // Desktop branch — Task 23 wires this. For now, surface a
-        // clear error so the button never appears to do nothing.
-        setErr("Desktop Google sign-in not yet wired.");
+        const { port } = await desktop.oauth.startLoopback();
+        const redirect_uri = `http://127.0.0.1:${port}/oauth/callback`;
+        const out = await apiFetch<StartOut>(
+          `/auth/google/start?platform=desktop&redirect_uri=${encodeURIComponent(redirect_uri)}`,
+        );
+        desktop.oauth.openExternal(out.authorize_url);
         return;
       }
       const out = await apiFetch<StartOut>(

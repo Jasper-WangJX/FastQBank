@@ -1,9 +1,10 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import {
   BrowserRouter,
   Navigate,
   Route,
   Routes,
+  useNavigate,
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { RequireAuth } from "./auth/RequireAuth";
@@ -15,18 +16,41 @@ import QuestionListPage from "./pages/QuestionListPage";
 import QuestionFormPage from "./pages/QuestionFormPage";
 import ReviewEntryPage from "./pages/ReviewEntryPage";
 import ReviewSessionPage from "./pages/ReviewSessionPage";
+import { getDesktop } from "./lib/desktop";
+import { completeOAuthCallback } from "./lib/oauth";
 
-/** Inverse of RequireAuth: keep an already-logged-in user out of the
- *  login/register pages by bouncing them to the home page. */
 function PublicOnly({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
   return isAuthenticated ? <Navigate to="/" replace /> : <>{children}</>;
+}
+
+/** Listens for the desktop main-process IPC carrying the OAuth
+ *  callback. Lives inside AuthProvider so it can call login(). */
+function DesktopOAuthListener() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  useEffect(() => {
+    const desktop = getDesktop();
+    if (!desktop) return;
+    const unsubscribe = desktop.oauth.onCallback(async ({ code, state }) => {
+      try {
+        const token = await completeOAuthCallback(code, state);
+        login(token);
+        navigate("/", { replace: true });
+      } catch (e) {
+        console.error("[oauth] callback failed", e);
+      }
+    });
+    return unsubscribe;
+  }, [login, navigate]);
+  return null;
 }
 
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <DesktopOAuthListener />
         <Routes>
           <Route
             path="/login"
@@ -45,9 +69,6 @@ function App() {
             }
           />
           <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
-
-          {/* Authenticated area: one guarded shell, child routes render
-              into AppLayout's <Outlet/>. */}
           <Route
             element={
               <RequireAuth>
@@ -55,7 +76,6 @@ function App() {
               </RequireAuth>
             }
           >
-            {/* "/" has no page of its own — land on the question bank. */}
             <Route index element={<Navigate to="/questions" replace />} />
             <Route path="/questions" element={<QuestionListPage />} />
             <Route path="/questions/new" element={<QuestionFormPage />} />
@@ -66,8 +86,6 @@ function App() {
             <Route path="/review" element={<ReviewEntryPage />} />
             <Route path="/review/session" element={<ReviewSessionPage />} />
           </Route>
-
-          {/* Unknown paths -> "/" -> (index) -> /questions. */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AuthProvider>
