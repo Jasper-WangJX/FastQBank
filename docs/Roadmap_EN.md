@@ -29,7 +29,7 @@ This roadmap breaks the MVP into 11 phases, each shaped as an **end-to-end verti
 | 6 AI integration | ✅ Done (2026-05-17) | Tag suggestion + knowledge summary + rate limiting; on-demand vision AI for markerless split + LaTeX |
 | 7 Flashcards + wrong-set | ✅ Done (2026-05-18) | Question picker → card drill → persistent wrong set; incl. 7.1 tag/card-view UX |
 | 8 AI generation | ✅ Done (2026-05-19) | Pick seeds in Review entry → mixed/AI-only flashcards → on-card "Add to question bank" (with tags+analysis) |
-| 9 Bulk ops + share-link transfer | ⬜ Todo | Multi-select on bank page → bulk delete / add tag / bundle into link; paste-link import (UUID dedup) |
+| 9 Bulk ops + share-link transfer | ✅ Done (2026-05-19) | Multi-select on bank page → bulk delete / add tag / bundle into link; paste-link import (UUID dedup) |
 | 10 Polish + Windows installer | ⬜ Todo | electron-builder packaging, productization |
 
 ---
@@ -278,8 +278,29 @@ Select 3 seeds → generate 5 → edit 2 → check 4 and import; the drill page 
 
 ## Phase 9 — Bulk Operations + Share-Link Transfer
 
-> Design doc: `docs/superpowers/specs/2026-05-19-phase9-share-link-bulk-ops-design.md`.
-> **Scope change**: the originally planned "local JSON export / import" is dropped from v1; cross-account transfer is delivered via a server-side share-token short link instead. Dedup is still by UUID.
+> **Status: ✅ Done (2026-05-19).** Delivered via brainstorming → spec →
+> plan → subagent-driven execution (task-by-task spec/quality reviews +
+> a final whole-branch review). `scripts/verify_phase9.py` ALL PASS
+> (covers create / GET / import / UUID dedup four cases / my-shares /
+> revoke / IDOR / bulk-tags negative branches) + frontend `tsc`/`lint`/
+> `vitest`(46)/`build` clean + two-account GUI walkthrough (create →
+> select-all filtered → bundle → cross-account paste-import → revoke →
+> re-import returns 410 → bulk delete / add tag are account-scoped) all
+> green. Spec at
+> `docs/superpowers/specs/2026-05-19-phase9-share-link-bulk-ops-design.md`,
+> plan at
+> `docs/superpowers/plans/2026-05-19-phase9-share-link-bulk-ops.md`.
+
+#### As-built notes (deviations from the original plan)
+- **Share token**: `secrets.token_urlsafe(9)` → 12 URL-safe chars (~72 bits); no `nanoid` dependency. `is_valid_share_token` lets routes 404 obviously-malformed tokens before any DB query.
+- **Route-order gotcha (fixed)**: FastAPI matches in declaration order, so the static `/shares/me` route must be declared BEFORE the parametric `/shares/{token}` — otherwise `me` is treated as a 2-char token, fails the length check, and 404s. An explicit comment guards against regression.
+- **Three race-safe write paths**: (a) token-collision retry with `IntegrityError` (narrowed from `Exception`); (b) tag find-or-create under concurrent same-user import uses `pg_insert(...).on_conflict_do_nothing(...)` + re-SELECT; (c) bulk-tags uses composite-PK `ON CONFLICT DO NOTHING` + `RETURNING` for honest counters.
+- **`/review/tag-question-ids` gained `q`**: the bank page banner reads "Select all N matching" where N includes the keyword filter — caught in review that the endpoint only knew tags, leading to a silent over-select. Extended endpoint + client wrapper + caller now thread the keyword all the way through.
+- **Anonymous GET is rate-limited**: `/shares/{token}` is the only un-authed endpoint; per spec §7 it gets `@limiter.limit("60/minute")` keyed on `get_remote_address`.
+- **`SharePreviewOut` exposes no creator identity** — only payload + created_at — consistent with the "no access logging" stance from spec §2.2.
+- **Schema delta is minimal**: new `shares` table + `questions.imported_from_id` (no FK, write-once dedup tag), bundled into one migration `0005_shares_and_imported_from`.
+- **Intentionally deferred to v2**: `/s/<token>` browser deep-link route (the recipient pastes into the modal today); same-user concurrent-import question dedup (only the Modal busy state mitigates today); share TTL / access analytics / password protection.
+- **Branch**: `phase-9-share-link`, 22 commits (incl. 3 review-driven fix commits), merged into `main` after the exit-criterion GUI walkthrough.
 
 ### Tasks
 - Add multi-select to the bank page: icon-only checkbox per row/card; 3-state header checkbox (current-page select-all); when the current page is fully selected, surface a "Select all N filtered" expansion link; selection state survives paging and filter changes, cleared on hard refresh
