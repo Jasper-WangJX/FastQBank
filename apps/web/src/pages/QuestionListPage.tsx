@@ -168,12 +168,16 @@ export default function QuestionListPage() {
   }
 
   async function selectAllFiltered() {
-    // Reuse the existing review endpoint — it already returns every
-    // live owned question id matching tag_id[] + tag_match.
+    // Reuse the existing review endpoint — returns every live owned
+    // question id matching the SAME filters the list endpoint applies
+    // (tag_id[] + tag_match + keyword). Without all three flowing
+    // through, the banner count would silently disagree with the
+    // selection delta.
     try {
       const ids = await getTagQuestionIds(
         tagIds.length > 0 ? tagIds : [],
         tagIds.length > 0 ? tagMatch : "all",
+        debouncedQ || undefined,
       );
       setSelected((prev) => {
         const next = new Set(prev);
@@ -195,9 +199,13 @@ export default function QuestionListPage() {
     if (!window.confirm(`Delete ${ids.length} questions?`)) return;
     setBusy(true);
     setError(null);
+    let failures = 0;
     try {
       // Capped concurrency: 10 at a time. The backend tolerates 404
-      // for ids the user no longer owns (e.g. deleted in another tab).
+      // for ids the user no longer owns (e.g. deleted in another tab) —
+      // we treat 404 as success (the item is gone, which is what the
+      // user wanted). Other errors (network, 5xx) increment `failures`
+      // so the toast is honest.
       const queue = [...ids];
       const workers = new Array(Math.min(10, queue.length))
         .fill(null)
@@ -207,20 +215,46 @@ export default function QuestionListPage() {
             if (id === undefined) break;
             try {
               await deleteQuestion(id);
-            } catch {
-              /* swallow — refetch reconciles */
+            } catch (err: unknown) {
+              if (err instanceof ApiError && err.status === 404) {
+                // Already gone — treat as success.
+                continue;
+              }
+              failures += 1;
             }
           }
         });
       await Promise.all(workers);
-      // Drop deleted ids from the Set
-      setSelected((prev) => {
-        const next = new Set(prev);
-        for (const id of ids) next.delete(id);
-        return next;
-      });
-      setToast(`Deleted ${ids.length} question${ids.length === 1 ? "" : "s"}`);
-      setTimeout(() => setToast(null), 3000);
+      const succeeded = ids.length - failures;
+      // Drop succeeded ids from the Set (keep the failed ones so the
+      // user can retry / inspect them).
+      if (succeeded > 0) {
+        // We don't know exactly which succeeded vs failed; for the
+        // refetch-based UX this is acceptable — drop all attempted
+        // ids and rely on the list refetch to bring back any that
+        // are still live.
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const id of ids) next.delete(id);
+          return next;
+        });
+      }
+      if (failures === 0) {
+        setToast(
+          `Deleted ${succeeded} question${succeeded === 1 ? "" : "s"}`,
+        );
+      } else if (failures < ids.length) {
+        setToast(
+          `Deleted ${succeeded} of ${ids.length}; ${failures} failed`,
+        );
+      } else {
+        setError(
+          `Bulk delete failed for all ${ids.length} questions; please retry.`,
+        );
+      }
+      if (failures < ids.length) {
+        setTimeout(() => setToast(null), 3000);
+      }
       setTick((t) => t + 1);
     } finally {
       setBusy(false);

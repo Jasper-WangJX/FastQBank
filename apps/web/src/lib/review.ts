@@ -26,14 +26,18 @@ export function getDeck(
   return apiFetch<DeckOut>("/review/deck", { method: "POST", body });
 }
 
-/** Live question ids: AND/OR over one or more tag ids, or (no ids) ALL. */
+/** Live question ids: AND/OR over one or more tag ids, or (no ids) ALL.
+ * Optional `q` adds a keyword ILIKE filter on stem (matches the
+ * bank list's keyword box). */
 export function getTagQuestionIds(
   tagIds: string[] = [],
   tagMatch: "all" | "any" = "all",
+  q?: string,
 ): Promise<string[]> {
   const qs = new URLSearchParams();
   for (const id of tagIds) qs.append("tag_id", id);
   if (tagIds.length > 0) qs.set("tag_match", tagMatch);
+  if (q && q.trim().length > 0) qs.set("q", q);
   const suffix = qs.toString();
   return apiFetch<{ question_ids: string[] }>(
     `/review/tag-question-ids${suffix ? `?${suffix}` : ""}`,

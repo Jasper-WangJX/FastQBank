@@ -70,11 +70,13 @@ async def review_tag_question_ids(
     user: CurrentUser,
     tag_id: list[UUID] = Query(default_factory=list),
     tag_match: str = Query("all", pattern="^(all|any)$"),
+    q: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> TagQuestionIdsOut:
     """Live owned question ids. With one or more `tag_id`s: questions
-    that match under AND/OR (per `tag_match`). Without any: every live
-    owned question. Backs the picker's per-source "Select all"."""
+    that match under AND/OR (per `tag_match`). With `q`: also filter
+    by stem keyword (ILIKE). Backs the bank page's "Select all N
+    filtered" and the picker's per-source "Select all"."""
     conds = [
         Question.user_id == user.id,
         Question.deleted_at.is_(None),
@@ -83,6 +85,8 @@ async def review_tag_question_ids(
         conds.append(
             await multi_tag_predicate(db, user.id, tag_id, tag_match)
         )
+    if q:
+        conds.append(Question.stem.ilike(f"%{q}%"))
     ids = (await db.scalars(select(Question.id).where(*conds))).all()
     return TagQuestionIdsOut(question_ids=list(ids))
 
