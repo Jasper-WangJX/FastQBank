@@ -14,18 +14,34 @@ const MAX_OPTIONS_SHOWN = 4;
 export function QuestionCard({
   question,
   actions,
+  selectControl,
 }: {
   question: Question;
   actions?: ReactNode;
+  /** Optional icon-only checkbox (or any small control) rendered at the
+   * top-left of the card. Lets QuestionListPage wire selection without
+   * forking the card component. When undefined, no extra wrapper is
+   * rendered around the stem. */
+  selectControl?: ReactNode;
 }) {
   const shown = question.options.slice(0, MAX_OPTIONS_SHOWN);
   const extra = question.options.length - shown.length;
   return (
     <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
-      <Latex
-        text={question.stem}
-        className="line-clamp-3 block text-sm font-medium text-gray-800"
-      />
+      {selectControl !== undefined ? (
+        <div className="flex items-start gap-2">
+          <div className="mt-0.5 shrink-0">{selectControl}</div>
+          <Latex
+            text={question.stem}
+            className="line-clamp-3 block flex-1 text-sm font-medium text-gray-800"
+          />
+        </div>
+      ) : (
+        <Latex
+          text={question.stem}
+          className="line-clamp-3 block text-sm font-medium text-gray-800"
+        />
+      )}
       <ul className="mt-2 flex-1 space-y-0.5">
         {shown.map((o) => (
           <li key={o.label} className="flex gap-1 text-xs text-gray-600">
