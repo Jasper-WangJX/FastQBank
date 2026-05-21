@@ -6,6 +6,19 @@
 # (/tags, /questions, ...) work on hard refresh.
 fastqbank.com {
 	encode gzip zstd
+
+	# Windows installer download. Served from a host-mounted directory
+	# (see deploy/docker-compose.prod.yml — `/opt/fastqbank/downloads`
+	# is bind-mounted to /srv/downloads:ro). `handle_path` strips the
+	# /download prefix before file_server resolves the request, so the
+	# file on disk is just `FastQBank-Setup-X.Y.Z.exe`. Lives ABOVE the
+	# SPA root so it wins the route match for /download/*.
+	handle_path /download/* {
+		root * /srv/downloads
+		file_server
+		header Content-Disposition attachment
+	}
+
 	root * /srv/web
 	try_files {path} /index.html
 	file_server

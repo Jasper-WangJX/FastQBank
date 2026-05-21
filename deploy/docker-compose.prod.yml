@@ -53,6 +53,12 @@ services:
       # Persist issued certificates across restarts (avoids LE rate limits).
       - caddy_data:/data
       - caddy_config:/config
+      # Windows installer payload — bind-mounted read-only so we can
+      # `scp` new builds onto the host without rebuilding the image.
+      # The host directory MUST exist before `docker compose up` runs
+      # (Compose will create an empty one otherwise but Caddy then 404s
+      # every /download/* request). See deploy/Caddyfile for the route.
+      - /opt/fastqbank/downloads:/srv/downloads:ro
     restart: unless-stopped
 
 volumes:
