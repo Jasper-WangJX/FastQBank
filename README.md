@@ -7,8 +7,8 @@ by the same FastAPI server.
 
 ## For users (Windows)
 
-1. Download `FastQBank Setup 1.0.0.exe` from the latest GitHub Release
-   (link: https://github.com/Jasper-WangJX/FastQBank/releases/tag/v1.0.0).
+1. Download `FastQBank Setup 1.0.1.exe` from the latest GitHub Release
+   (link: https://github.com/Jasper-WangJX/FastQBank/releases/latest).
 2. Double-click the installer. 
 3. Step through the NSIS wizard. The app installs per-user; no administrator rights needed.
 4. Launch FastQBank from the Start menu. Sign up with email + code, or sign in with Google.
@@ -84,7 +84,7 @@ See `deploy/env.prod.example` for the full production list.
 pnpm --dir apps\desktop dist
 ```
 
-Produces `apps\desktop\release\FastQBank Setup 1.0.0.exe` (300–500 MB —
+Produces `apps\desktop\release\FastQBank Setup 1.0.1.exe` (300–500 MB —
 the PaddleOCR sidecar dominates).
 
 `pnpm --dir apps\desktop pack` (note: `pack`, not `dist`) does a faster
