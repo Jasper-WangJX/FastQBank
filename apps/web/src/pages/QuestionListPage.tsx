@@ -35,8 +35,6 @@ import { getTagQuestionIds } from "../lib/review";
 import Latex from "../components/Latex";
 import TagFilter from "../components/tags/TagFilter";
 import TagManageDrawer from "../components/tags/TagManageDrawer";
-import OnboardingEmpty from "../components/onboarding/OnboardingEmpty";
-import { shouldShowOnboarding } from "../components/onboarding/shouldShowOnboarding";
 import { QuestionCard, QuestionCardGrid } from "../components/QuestionCard";
 import BulkAddTagModal from "../components/share/BulkAddTagModal";
 import BundleResultModal from "../components/share/BundleResultModal";
@@ -68,7 +66,7 @@ export default function QuestionListPage() {
   const [tick, setTick] = useState(0); // bump to force a refetch
 
   const [data, setData] = useState<QuestionListOut | null>(null);
-  const [tags, setTags] = useState<Tag[] | null>(null);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Presentation only — default "list" preserves the original UX.
@@ -322,11 +320,6 @@ export default function QuestionListPage() {
   const pages = total === 0 ? 1 : Math.ceil(total / PAGE_SIZE);
   const currentPage = total === 0 ? 1 : Math.floor(offset / PAGE_SIZE) + 1;
 
-  const showOnboarding = shouldShowOnboarding({
-    tagCount: tags === null ? null : tags.length,
-    questionTotal: data ? data.total : null,
-  });
-
   // Sapphire-tinted accent for native checkboxes.
   const checkboxClass =
     "h-3.5 w-3.5 shrink-0 cursor-pointer accent-[#1E3A8A]";
@@ -351,8 +344,6 @@ export default function QuestionListPage() {
           .fqb-caret, .fqb-row { animation: none !important; }
         }
       `}</style>
-
-      {showOnboarding && <OnboardingEmpty />}
 
       {/* ====================================================================
           Title row
@@ -528,7 +519,7 @@ export default function QuestionListPage() {
           ==================================================================== */}
       <div className="mt-3">
         <TagFilter
-          tags={tags ?? []}
+          tags={tags}
           selectedIds={tagIds}
           onChangeSelected={(ids) => {
             setTagIds(ids);
@@ -889,11 +880,11 @@ export default function QuestionListPage() {
         onClose={async () => {
           setManageOpen(false);
           // After closing, drop any selected ids whose tags were deleted.
-          const live = new Set((tags ?? []).map((t) => t.id));
+          const live = new Set(tags.map((t) => t.id));
           const filtered = tagIds.filter((id) => live.has(id));
           if (filtered.length !== tagIds.length) setTagIds(filtered);
         }}
-        tags={tags ?? []}
+        tags={tags}
         onChanged={reloadTagsAndList}
       />
       {importOpen && (
@@ -922,7 +913,7 @@ export default function QuestionListPage() {
       {bulkTagOpen && (
         <BulkAddTagModal
           questionIds={[...selected]}
-          initialTags={tags ?? []}
+          initialTags={tags}
           onClose={() => setBulkTagOpen(false)}
           onApplied={() => {
             setToast(
