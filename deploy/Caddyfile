@@ -8,20 +8,30 @@ fastqbank.com {
 	encode gzip zstd
 
 	# Windows installer download. Served from a host-mounted directory
-	# (see deploy/docker-compose.prod.yml — `/opt/fastqbank/downloads`
-	# is bind-mounted to /srv/downloads:ro). `handle_path` strips the
-	# /download prefix before file_server resolves the request, so the
-	# file on disk is just `FastQBank-Setup-X.Y.Z.exe`. Lives ABOVE the
-	# SPA root so it wins the route match for /download/*.
+	# (see deploy/docker-compose.prod.yml — `<repo>/downloads/` is
+	# bind-mounted to /srv/downloads:ro). `handle_path` strips the
+	# /download prefix before file_server resolves, so the file on
+	# disk is just `FastQBank-Setup-X.Y.Z.exe`.
+	#
+	# Both routes are wrapped in `handle` / `handle_path` blocks
+	# DELIBERATELY. Without that wrapping, Caddy's directive auto-
+	# ordering puts `try_files` (position 9) BEFORE `handle_path`
+	# (position 10+), which means try_files rewrites /download/foo.exe
+	# → /index.html before the handle_path matcher gets to see the
+	# original path — Caddy then serves the SPA shell instead of the
+	# .exe. Sibling `handle*` blocks preserve declaration order and
+	# only the first matching block runs.
 	handle_path /download/* {
 		root * /srv/downloads
 		file_server
 		header Content-Disposition attachment
 	}
 
-	root * /srv/web
-	try_files {path} /index.html
-	file_server
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
 }
 
 # Backend API (separate subdomain — no path collision with SPA routes).
