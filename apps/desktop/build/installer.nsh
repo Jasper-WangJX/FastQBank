@@ -63,8 +63,14 @@ FunctionEnd
 ; first launch.
 ; ---------------------------------------------------------------
 !macro customUnInstall
-  RMDir /r "$APPDATA\FastQBank"
-  RMDir /r "$LOCALAPPDATA\FastQBank"
+  ; Defensive: refuse to RMDir against a drive root if the env var
+  ; somehow isn't set (e.g., pathological service-account installs).
+  ${If} $APPDATA != ""
+    RMDir /r "$APPDATA\FastQBank"
+  ${EndIf}
+  ${If} $LOCALAPPDATA != ""
+    RMDir /r "$LOCALAPPDATA\FastQBank"
+  ${EndIf}
 
   ; Also remove the Start Menu folder if we created one.
   Delete "$SMPROGRAMS\FastQBank\FastQBank.lnk"
