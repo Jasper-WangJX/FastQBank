@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+
 import { API_BASE } from "../config";
 
 // Single source of truth for the localStorage key holding the JWT.
@@ -66,11 +68,17 @@ export async function apiFetch<T = unknown>(
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: options.method ?? "GET",
-    headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+  } catch (err) {
+    toast.error("Network error — please check your connection");
+    throw err;
+  }
 
   return handleResponse<T>(res);
 }
@@ -84,6 +92,10 @@ async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) {
     clearToken();
     window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
+
+  if (res.status >= 500) {
+    toast.error("Server error — please try again");
   }
 
   const raw = await res.text();
@@ -114,11 +126,17 @@ export async function apiFetchForm<T = unknown>(
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers,
-    body: form,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+  } catch (err) {
+    toast.error("Network error — please check your connection");
+    throw err;
+  }
 
   return handleResponse<T>(res);
 }
