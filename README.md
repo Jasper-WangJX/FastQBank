@@ -8,7 +8,7 @@ by the same FastAPI server.
 ## For users (Windows)
 
 1. Download `FastQBank Setup 1.0.0.exe` from the latest GitHub Release
-   (link: https://github.com/Jasper-WangJX/AI-assisted-question-bank/releases/tag/v1.0.0).
+   (link: https://github.com/Jasper-WangJX/FastQBank/releases/tag/v1.0.0).
 2. Double-click the installer. 
 3. Step through the NSIS wizard. The app installs per-user; no administrator rights needed.
 4. Launch FastQBank from the Start menu. Sign up with email + code, or sign in with Google.
