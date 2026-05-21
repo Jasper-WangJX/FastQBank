@@ -137,5 +137,17 @@ export function useAuth(): AuthContextValue {
   if (ctx === undefined) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
-  return ctx;
+  // Belt-and-braces tiebreaker: `login()` calls persistToken() (writes
+  // localStorage synchronously) right before setTokenState() (queues a
+  // React update). If the caller follows up with navigate("/questions"),
+  // the Router can re-render with the new URL BEFORE the batched
+  // setTokenState flushes — and RequireAuth then sees a stale `false`,
+  // bounces to /login, where PublicOnly sees the now-fresh `true` and
+  // bounces to / (the public LandingPage). Reading localStorage as an
+  // OR-tiebreaker closes that window since persistToken is always one
+  // tick ahead of React state.
+  return {
+    ...ctx,
+    isAuthenticated: ctx.isAuthenticated || getToken() !== null,
+  };
 }
