@@ -115,7 +115,9 @@ export default function RegisterPage() {
         body: { email, password, code },
       });
       login(data.access_token);
-      navigate("/", { replace: true });
+      // `/` is now the public LandingPage, so jump straight into the
+      // app shell on successful sign-up.
+      navigate("/questions", { replace: true });
     } catch (err) {
       const detail = err instanceof ApiError ? err.message : undefined;
       setError(friendlyError(detail));

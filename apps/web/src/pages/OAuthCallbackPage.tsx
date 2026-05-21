@@ -33,7 +33,7 @@ export default function OAuthCallbackPage() {
       .then((token) => {
         if (cancelled) return;
         login(token);
-        navigate("/", { replace: true });
+        navigate("/questions", { replace: true });
       })
       .catch((e) => {
         if (cancelled) return;

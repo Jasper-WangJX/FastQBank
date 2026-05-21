@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   Camera,
+  Home,
   Settings,
   LogOut,
   Plus,
@@ -224,6 +225,19 @@ export default function AppLayout() {
                   Ctrl+Shift+Q
                 </span>
               </button>
+            )}
+            {/* Home → public landing page. Web-only: the desktop shell
+                never displays a marketing landing, so there's nowhere
+                for desktop users to "go home" to from inside the app. */}
+            {!desktop && (
+              <NavLink
+                to="/"
+                title="Home"
+                aria-label="Home"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-200 text-slate-500 transition-colors duration-150 hover:border-[#1E3A8A] hover:text-[#1E3A8A]"
+              >
+                <Home size={14} strokeWidth={1.5} />
+              </NavLink>
             )}
             <button
               type="button"

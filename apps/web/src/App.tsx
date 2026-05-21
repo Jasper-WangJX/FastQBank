@@ -9,6 +9,7 @@ import {
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { RequireAuth } from "./auth/RequireAuth";
 import AppLayout from "./components/AppLayout";
+import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import OAuthCallbackPage from "./pages/OAuthCallbackPage";
@@ -22,6 +23,9 @@ import { completeOAuthCallback } from "./lib/oauth";
 
 function PublicOnly({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
+  // Authed users that land on /login or /register are bounced to /
+  // (LandingPage), which detects their auth state and surfaces the
+  // "OPEN APP →" CTA pointing at /questions.
   return isAuthenticated ? <Navigate to="/" replace /> : <>{children}</>;
 }
 
@@ -37,7 +41,7 @@ function DesktopOAuthListener() {
       try {
         const token = await completeOAuthCallback(code, state);
         login(token);
-        navigate("/", { replace: true });
+        navigate("/questions", { replace: true });
       } catch (e) {
         console.error("[oauth] callback failed", e);
       }
@@ -53,6 +57,11 @@ function App() {
       <AuthProvider>
         <DesktopOAuthListener />
         <Routes>
+          {/* Public landing page. Renders for every visitor; the
+              embedded "ENTER WEB" / "OPEN APP" CTA flips based on the
+              current auth state. */}
+          <Route path="/" element={<LandingPage />} />
+
           <Route
             path="/login"
             element={
@@ -71,6 +80,9 @@ function App() {
           />
           <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+
+          {/* Authenticated app surface. RequireAuth gates each path
+              under here; unauth users are redirected to /login. */}
           <Route
             element={
               <RequireAuth>
@@ -78,7 +90,6 @@ function App() {
               </RequireAuth>
             }
           >
-            <Route index element={<Navigate to="/questions" replace />} />
             <Route path="/questions" element={<QuestionListPage />} />
             <Route path="/questions/new" element={<QuestionFormPage />} />
             <Route

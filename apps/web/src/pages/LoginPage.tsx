@@ -42,7 +42,9 @@ export default function LoginPage() {
         body: { email, password },
       });
       login(data.access_token);
-      navigate("/", { replace: true });
+      // `/` is now the public LandingPage, so jump straight into the
+      // app shell on successful login.
+      navigate("/questions", { replace: true });
     } catch (err) {
       // ApiError.message carries the backend's `detail`
       // (e.g. "invalid email or password").
