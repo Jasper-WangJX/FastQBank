@@ -27,6 +27,11 @@ apps/desktop/build/*
 dist-electron/
 release/
 
+# ---------- Deploy: Windows installer payload ----------
+# Created on the VPS / locally by `scp`-ing the built .exe in.
+# Bind-mounted into the Caddy container via deploy/docker-compose.prod.yml.
+downloads/
+
 # ---------- Python (apps/server & packages/ocr-sidecar) ----------
 .venv/
 venv/

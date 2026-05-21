@@ -55,10 +55,12 @@ services:
       - caddy_config:/config
       # Windows installer payload — bind-mounted read-only so we can
       # `scp` new builds onto the host without rebuilding the image.
-      # The host directory MUST exist before `docker compose up` runs
-      # (Compose will create an empty one otherwise but Caddy then 404s
-      # every /download/* request). See deploy/Caddyfile for the route.
-      - /opt/fastqbank/downloads:/srv/downloads:ro
+      # Relative path is resolved against THIS compose file's directory
+      # (deploy/), so `../downloads` lives at `<repo>/downloads/`. The
+      # directory must exist on the host before `up`; create it once
+      # with `mkdir -p <repo>/downloads`. See deploy/Caddyfile for the
+      # matching /download/* route.
+      - ../downloads:/srv/downloads:ro
     restart: unless-stopped
 
 volumes:
