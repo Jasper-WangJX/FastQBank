@@ -18,6 +18,9 @@ build/
 out/
 .vite/
 *.tsbuildinfo
+# Keep the custom NSIS installer include script (source, not build output).
+!apps/desktop/build/
+!apps/desktop/build/*.nsh
 
 # ---------- Electron packaging (used from stage 4 onward) ----------
 dist-electron/

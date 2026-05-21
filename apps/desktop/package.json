@@ -44,9 +44,10 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "FastQBank"
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": false,
+      "shortcutName": "FastQBank",
+      "include": "build/installer.nsh"
     }
   },
   "devDependencies": {
