@@ -18,7 +18,7 @@ interface TokenOut {
   token_type: string;
 }
 
-const BUILD_TAG = "v0.9.0";
+const BUILD_TAG = "v1.0.1";
 
 export default function LoginPage() {
   const { login } = useAuth();
