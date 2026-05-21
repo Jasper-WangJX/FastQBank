@@ -13,7 +13,7 @@ import { useAuth } from "../auth/AuthContext";
 import { completeOAuthCallback } from "../lib/oauth";
 import { ApiError } from "../lib/api";
 
-const BUILD_TAG = "v0.9.0";
+const BUILD_TAG = "v1.0.1";
 
 export default function OAuthCallbackPage() {
   const navigate = useNavigate();

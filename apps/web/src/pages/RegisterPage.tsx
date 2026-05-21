@@ -21,7 +21,7 @@ interface TokenOut {
   token_type: string;
 }
 
-const BUILD_TAG = "v0.9.0";
+const BUILD_TAG = "v1.0.1";
 const RESEND_COOLDOWN = 60; // seconds
 
 type Step = "request" | "verify";
