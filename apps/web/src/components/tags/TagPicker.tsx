@@ -46,13 +46,6 @@ export default function TagPicker({
 
   async function onCreate() {
     if (!trimmed || duplicate || busy) return;
-    if (
-      !window.confirm(
-        `Create tag "${trimmed}"? Tags can only be renamed or deleted from the Question Bank page.`,
-      )
-    ) {
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
@@ -113,6 +106,17 @@ export default function TagPicker({
         <input
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter inside this input must create the tag, NOT submit
+            // the surrounding QuestionFormPage <form>. Without the
+            // preventDefault, the browser fires the form's implicit
+            // submit since this is the only text input that doesn't
+            // already handle Enter.
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void onCreate();
+            }
+          }}
           placeholder="New tag name"
           className="flex-1 rounded-sm border border-slate-200 bg-white px-2 py-1 font-mono text-[12px] text-slate-900 outline-none transition-colors duration-150 placeholder:text-slate-400 focus:border-[#1E3A8A]"
         />
