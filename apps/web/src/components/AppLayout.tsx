@@ -14,6 +14,7 @@ import {
   Library,
   Circle,
 } from "lucide-react";
+import { Toaster } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { getDesktop } from "../lib/desktop";
 import { splitQuestion } from "../lib/ocr/splitter";
@@ -298,6 +299,7 @@ export default function AppLayout() {
       </footer>
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <Toaster position="top-right" richColors closeButton />
     </div>
   );
 }
