@@ -53,7 +53,15 @@ function DesktopOAuthListener() {
 
 function App() {
   return (
-    <BrowserRouter>
+    // useTransitions={false}: by default RR7 wraps location state updates
+    // in React.startTransition. That makes URL changes a *low-priority*
+    // update, while login()'s setTokenState() is *urgent* — so after a
+    // successful sign-in the auth context flips to `true` one render
+    // BEFORE the URL flips to /questions, PublicOnly (still mounted at
+    // /login) renders <Navigate to="/" />, and that supersedes the
+    // pending /questions transition. Result: user lands on LandingPage.
+    // Forcing urgent updates batches them with setTokenState.
+    <BrowserRouter useTransitions={false}>
       <AuthProvider>
         <DesktopOAuthListener />
         <Routes>
