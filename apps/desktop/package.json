@@ -8,7 +8,7 @@
     "gen:icons": "node scripts/gen-icons.cjs",
     "build:desktop": "tsc -p tsconfig.json",
     "build:web": "cross-env VITE_API_BASE_URL=https://api.fastqbank.com pnpm --dir ../web run build",
-    "build:sidecar": "../../packages/ocr-sidecar/.venv/Scripts/python.exe ../../packages/ocr-sidecar/build.py",
+    "build:sidecar": "node scripts/build-sidecar.cjs",
     "build": "pnpm build:web && pnpm build:desktop",
     "dev": "cross-env ELECTRON_DEV=1 pnpm build:desktop && cross-env ELECTRON_DEV=1 electron .",
     "start": "electron .",
