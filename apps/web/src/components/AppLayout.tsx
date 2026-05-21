@@ -14,12 +14,14 @@ import {
   Library,
   Circle,
 } from "lucide-react";
+import { Toaster } from "sonner";
 import { useAuth } from "../auth/AuthContext";
 import { getDesktop } from "../lib/desktop";
 import { splitQuestion } from "../lib/ocr/splitter";
 import WindowControls from "./WindowControls";
 import SettingsModal from "./settings/SettingsModal";
 import { DRAG_STYLE, NO_DRAG_STYLE } from "./windowChrome";
+import OfflineBanner from "./OfflineBanner";
 
 const BUILD_TAG = "v0.9.0";
 
@@ -251,6 +253,8 @@ export default function AppLayout() {
         </div>
       </header>
 
+      <OfflineBanner />
+
       {ocrBusy && (
         <div className="relative border-b border-[#DBEAFE] bg-[#EFF6FF] px-4 py-2 text-center font-mono text-xs text-[#1E3A8A]">
           [ OCR ] · Recognizing screenshot…
@@ -298,6 +302,7 @@ export default function AppLayout() {
       </footer>
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <Toaster position="top-right" richColors closeButton />
     </div>
   );
 }

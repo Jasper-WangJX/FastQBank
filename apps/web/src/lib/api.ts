@@ -1,3 +1,5 @@
+import { toast } from "sonner";
+
 import { API_BASE } from "../config";
 
 // Single source of truth for the localStorage key holding the JWT.
@@ -37,6 +39,12 @@ export function clearToken(): void {
  */
 export const UNAUTHORIZED_EVENT = "aqb:unauthorized";
 
+// Centralized user-facing messages. Kept as constants so toast copy
+// stays consistent and so a future error-UX pass can find every
+// transport-level message in one place.
+const NETWORK_ERROR_MSG = "Network error — please check your connection";
+const SERVER_ERROR_MSG = "Server error — please try again";
+
 // The body is JSON.stringify'd below, which accepts any serializable
 // value, so `unknown` is the precise type. (A narrower object type would
 // reject named interfaces — they lack an index signature — forcing casts
@@ -54,7 +62,16 @@ interface RequestOptions {
  *  - sends/expects JSON
  *  - interceptor: attaches `Authorization: Bearer <token>` if logged in
  *  - on 401: clears the token and emits UNAUTHORIZED_EVENT
+ *  - on network failure (fetch throws): fires a sonner error toast
+ *    NETWORK_ERROR_MSG, then re-throws so callers' catch blocks still run
+ *  - on 5xx: fires a sonner error toast SERVER_ERROR_MSG (see handleResponse)
  *  - throws ApiError on non-2xx, surfacing the backend's `detail`
+ *
+ * Note: pages that already render inline error text on caught failures
+ * will currently show both the toast AND their inline message — this
+ * double-reporting is a known v1.0 caveat to be cleaned up in a later
+ * polish pass (pages should drop their generic "Network error" inline
+ * text and rely on the toast).
  */
 export async function apiFetch<T = unknown>(
   path: string,
@@ -66,24 +83,35 @@ export async function apiFetch<T = unknown>(
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: options.method ?? "GET",
-    headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+  } catch (err) {
+    toast.error(NETWORK_ERROR_MSG);
+    throw err;
+  }
 
   return handleResponse<T>(res);
 }
 
 /**
  * Shared post-fetch handling for both transports: 401 -> clear token +
- * emit UNAUTHORIZED_EVENT; parse JSON (tolerating empty 204 bodies);
- * non-2xx -> ApiError carrying the backend's `detail`.
+ * emit UNAUTHORIZED_EVENT; 5xx -> fire a SERVER_ERROR_MSG toast;
+ * parse JSON (tolerating empty 204 bodies); non-2xx -> ApiError carrying
+ * the backend's `detail`.
  */
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) {
     clearToken();
     window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
+
+  if (res.status >= 500) {
+    toast.error(SERVER_ERROR_MSG);
   }
 
   const raw = await res.text();
@@ -104,7 +132,8 @@ async function handleResponse<T>(res: Response): Promise<T> {
  * Multipart sibling of apiFetch for /ai/parse-question (cropped image +
  * OCR text). Deliberately does NOT set Content-Type: the browser must
  * add the multipart boundary itself. Reuses the same auth header, 401
- * interceptor and ApiError contract.
+ * interceptor, ApiError contract, and the network/5xx toast side
+ * effects (see apiFetch and handleResponse for the toast contract).
  */
 export async function apiFetchForm<T = unknown>(
   path: string,
@@ -114,11 +143,17 @@ export async function apiFetchForm<T = unknown>(
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers,
-    body: form,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+  } catch (err) {
+    toast.error(NETWORK_ERROR_MSG);
+    throw err;
+  }
 
   return handleResponse<T>(res);
 }
