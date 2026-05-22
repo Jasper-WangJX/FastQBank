@@ -21,7 +21,7 @@ import { getDesktop } from "../lib/desktop";
 import WindowControls from "../components/WindowControls";
 import { DRAG_STYLE, NO_DRAG_STYLE } from "../components/windowChrome";
 
-const BUILD_TAG = "v1.0.1";
+const BUILD_TAG = "v1.0.2";
 const RESEND_COOLDOWN = 60; // seconds
 
 type Step = "request" | "verify";

@@ -24,7 +24,7 @@ import SettingsModal from "./settings/SettingsModal";
 import { DRAG_STYLE, NO_DRAG_STYLE } from "./windowChrome";
 import OfflineBanner from "./OfflineBanner";
 
-const BUILD_TAG = "v1.0.1";
+const BUILD_TAG = "v1.0.2";
 
 function tabClass({ isActive }: { isActive: boolean }) {
   // Rectangular VSCode-style tab — sharp 2px corners, sapphire-800 top

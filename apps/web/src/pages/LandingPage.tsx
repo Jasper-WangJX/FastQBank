@@ -13,7 +13,7 @@
 //   - "ENTER WEB →" navigates to /login for guests, /questions for
 //     authenticated users (label flips to "OPEN APP →" in that case).
 //   - The Windows installer is served as a static file at
-//     /download/FastQBank-Setup-1.0.0.exe — see deploy/ for the
+//     /download/FastQBank-Setup-1.0.2.exe — see deploy/ for the
 //     reverse-proxy alias that maps it to apps/desktop/release/.
 
 import { Link } from "react-router-dom";
@@ -376,7 +376,7 @@ export default function LandingPage() {
               FastQBank
             </span>
             <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">
-              v1.0.0
+              v1.0.2
             </span>
             <Link
               to={ctaTarget}
@@ -390,7 +390,7 @@ export default function LandingPage() {
         {/* === Hero === */}
         <section className="relative z-10 mx-auto flex max-w-6xl flex-col items-start gap-6 px-6 pb-20 pt-16 md:pt-20">
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/40">
-            // FASTQBANK · 1.0.0 · BLUEPRINT BUILD
+            // FASTQBANK · 1.0.2 · BLUEPRINT BUILD
           </p>
 
           <h1 className="text-[44px] font-semibold leading-[1.08] tracking-tight md:text-[52px] lg:text-[60px] lg:leading-[76px]">
@@ -406,12 +406,12 @@ export default function LandingPage() {
 
           <div className="mt-2 flex flex-col items-start gap-3">
             <a
-              href="/download/FastQBank-Setup-1.0.0.exe"
+              href="/download/FastQBank-Setup-1.0.2.exe"
               className="fqb-cta inline-flex items-center gap-3 rounded-sm bg-transparent px-6 py-3 font-mono text-[12px] uppercase tracking-[0.18em] text-white transition-all duration-200"
               style={{ border: "1.5px solid #60A5FA" }}
             >
               <IconDownload className="text-[#60A5FA]" />
-              DOWNLOAD FOR WINDOWS · 1.0.0
+              DOWNLOAD FOR WINDOWS · 1.0.2
             </a>
             <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-white/40">
               ~ 300 MB · Win 10/11
@@ -487,7 +487,7 @@ export default function LandingPage() {
           />
           READY
         </span>
-        <span className="ml-auto text-white/60">FastQBank · v1.0.0</span>
+        <span className="ml-auto text-white/60">FastQBank · v1.0.2</span>
       </footer>
     </div>
   );
