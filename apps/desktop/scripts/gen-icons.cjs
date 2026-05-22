@@ -13,6 +13,9 @@
 //        assets/icon.ico   (multi-resolution 16/24/32/48/64/128/256,
 //                           used by electron-builder for the installer
 //                           and the packaged exe)
+//        assets/icon.icns  (PNG-based ICNS, 16…1024 + retina types,
+//                           used by electron-builder for the macOS app
+//                           and the DMG)
 //
 // Re-run with `pnpm gen:icons` whenever resources/fastqbICON.png changes.
 
@@ -29,6 +32,21 @@ const OUT_DIR = path.resolve(__dirname, "..", "assets");
 const PADDING_FRAC = 0.1;
 // ICO sub-image sizes. Windows picks the closest match at runtime.
 const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256];
+// ICNS entries: [OSType, pixel size]. PNG-based types (macOS 10.7+).
+// Includes both points sizes and their @2x retina variants; macOS picks
+// the best match per display. Duplicate pixel sizes share one PNG.
+const ICNS_ENTRIES = [
+  ["icp4", 16], // 16×16
+  ["icp5", 32], // 32×32
+  ["ic11", 32], // 16×16@2x
+  ["ic12", 64], // 32×32@2x
+  ["ic07", 128], // 128×128
+  ["ic13", 256], // 128×128@2x
+  ["ic08", 256], // 256×256
+  ["ic14", 512], // 256×256@2x
+  ["ic09", 512], // 512×512
+  ["ic10", 1024], // 512×512@2x
+];
 // On-disk artifact sizes for the standalone PNGs.
 const ICON_PNG_SIZE = 256;
 const TRAY_PNG_SIZE = 32;
@@ -246,6 +264,33 @@ function buildCanvas(decoded, side) {
   return compose(side, fitW, fitH, resized);
 }
 
+// --- Build an .icns container from PNG-based icon entries. -----------------
+// ICNS layout: 'icns' magic + total length (8-byte file header), then a
+// flat sequence of entries, each = 4-byte OSType + 4-byte entry length
+// (including its own 8-byte header) + payload (a full PNG).
+function buildIcns(decoded) {
+  const pngBySize = new Map();
+  const pngFor = (size) => {
+    if (!pngBySize.has(size)) {
+      const canvas = buildCanvas(decoded, size);
+      pngBySize.set(size, encodePng(size, size, canvas));
+    }
+    return pngBySize.get(size);
+  };
+  const entries = ICNS_ENTRIES.map(([type, size]) => {
+    const png = pngFor(size);
+    const header = Buffer.alloc(8);
+    header.write(type, 0, "ascii");
+    header.writeUInt32BE(png.length + 8, 4);
+    return Buffer.concat([header, png]);
+  });
+  const body = Buffer.concat(entries);
+  const fileHeader = Buffer.alloc(8);
+  fileHeader.write("icns", 0, "ascii");
+  fileHeader.writeUInt32BE(body.length + 8, 4);
+  return Buffer.concat([fileHeader, body]);
+}
+
 // --- Main -----------------------------------------------------------------
 async function main() {
   if (!fs.existsSync(SRC)) {
@@ -277,6 +322,13 @@ async function main() {
   const ico = await pngToIco(pngBuffers);
   fs.writeFileSync(path.join(OUT_DIR, "icon.ico"), ico);
   console.log(`Wrote assets/icon.ico (${ICO_SIZES.join(", ")}).`);
+
+  // 4) icon.icns — macOS app + DMG icon (PNG-based ICNS).
+  const icns = buildIcns(decoded);
+  fs.writeFileSync(path.join(OUT_DIR, "icon.icns"), icns);
+  console.log(
+    `Wrote assets/icon.icns (${ICNS_ENTRIES.map(([, s]) => s).join(", ")}).`,
+  );
 }
 
 main().catch((err) => {

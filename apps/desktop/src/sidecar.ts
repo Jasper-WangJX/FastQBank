@@ -64,9 +64,11 @@ function findFreePort(): Promise<number> {
  */
 function resolveLaunch(): { cmd: string; args: string[] } {
   if (app.isPackaged) {
+    const exeName =
+      process.platform === "win32" ? "ocr_server.exe" : "ocr_server";
     const exe =
       process.env.OCR_SIDECAR_EXE ??
-      path.join(process.resourcesPath, "ocr-sidecar", "ocr_server.exe");
+      path.join(process.resourcesPath, "ocr-sidecar", exeName);
     return { cmd: exe, args: [] };
   }
   // out/main.js -> repo root is three levels up.
@@ -79,7 +81,13 @@ function resolveLaunch(): { cmd: string; args: string[] } {
     "ocr-sidecar",
   );
   const script = path.join(pkgDir, "ocr_server.py");
-  const venvPy = path.join(pkgDir, ".venv", "Scripts", "python.exe");
+  const isWin = process.platform === "win32";
+  const venvPy = path.join(
+    pkgDir,
+    ".venv",
+    isWin ? "Scripts" : "bin",
+    isWin ? "python.exe" : "python",
+  );
   const py =
     process.env.OCR_SIDECAR_PYTHON ??
     (existsSync(venvPy) ? venvPy : "python");

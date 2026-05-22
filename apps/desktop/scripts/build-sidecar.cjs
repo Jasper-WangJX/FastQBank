@@ -9,16 +9,25 @@ const path = require("node:path");
 const fs = require("node:fs");
 
 const pkgDir = path.resolve(__dirname, "..", "..", "..", "packages", "ocr-sidecar");
-const python = path.join(pkgDir, ".venv", "Scripts", "python.exe");
+const isWin = process.platform === "win32";
+const python = path.join(
+  pkgDir,
+  ".venv",
+  isWin ? "Scripts" : "bin",
+  isWin ? "python.exe" : "python",
+);
 const buildScript = path.join(pkgDir, "build.py");
 
 if (!fs.existsSync(python)) {
   console.error(`Sidecar venv python not found at:\n  ${python}`);
+  const pipHint = isWin
+    ? "  .venv\\Scripts\\python.exe -m pip install -r requirements.txt"
+    : "  .venv/bin/python -m pip install -r requirements.txt";
   console.error(
     "Create the venv with:\n" +
       "  cd packages/ocr-sidecar\n" +
       "  python -m venv .venv\n" +
-      "  .venv\\Scripts\\python.exe -m pip install -r requirements.txt",
+      pipHint,
   );
   process.exit(1);
 }

@@ -18,10 +18,12 @@ build/
 out/
 .vite/
 *.tsbuildinfo
-# Keep the custom NSIS installer include script (source, not build output).
+# Keep the custom NSIS installer include script and the macOS entitlements
+# (both are source, not build output).
 !apps/desktop/build/
 apps/desktop/build/*
 !apps/desktop/build/*.nsh
+!apps/desktop/build/*.plist
 
 # ---------- Electron packaging (used from stage 4 onward) ----------
 dist-electron/

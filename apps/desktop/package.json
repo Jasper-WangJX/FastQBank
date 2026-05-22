@@ -48,9 +48,29 @@
       "createStartMenuShortcut": false,
       "shortcutName": "FastQBank",
       "include": "build/installer.nsh"
-    }
+    },
+    "mac": {
+      "category": "public.app-category.education",
+      "icon": "assets/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "dmg": {
+      "title": "FastQBank ${version}",
+      "icon": "assets/icon.icns"
+    },
+    "afterSign": "scripts/notarize.cjs"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.5.0",
     "@types/node": "^24.12.3",
     "cross-env": "^7.0.3",
     "electron": "^33.0.0",
