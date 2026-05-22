@@ -71,6 +71,9 @@ export default function QuestionListPage() {
   const [busy, setBusy] = useState(false);
   // Presentation only — default "list" preserves the original UX.
   const [view, setView] = useState<"list" | "cards">("list");
+  // Card-view only: reveal the correct option(s) on each card. Default
+  // off so the bank doesn't spoil answers unless asked.
+  const [showAnswers, setShowAnswers] = useState(false);
   // Stage-9 selection: a Set of question ids. Survives paging / filter
   // changes (intentional — spec §2.6); cleared on hard refresh.
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -645,7 +648,8 @@ export default function QuestionListPage() {
         ) : view === "cards" ? (
           <>
             {/* Page-level select-all strip — parity with the list view's
-                header row, just rendered above the grid. */}
+                header row, just rendered above the grid. The card-only
+                "Show answers" toggle lives here, on the right. */}
             <div
               className="mb-3 flex items-center gap-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-[10.5px] uppercase tracking-[0.12em] text-slate-500"
             >
@@ -667,12 +671,25 @@ export default function QuestionListPage() {
                   ? `${pageIds.filter((id) => selected.has(id)).length} of ${pageIds.length} on this page`
                   : "Select page"}
               </span>
+              <label
+                title="Highlight the correct option on each card"
+                className="ml-4 flex cursor-pointer items-center gap-1.5 text-slate-600 transition-colors duration-150 hover:text-[#1E3A8A]"
+              >
+                <input
+                  type="checkbox"
+                  checked={showAnswers}
+                  onChange={(e) => setShowAnswers(e.target.checked)}
+                  className={checkboxClass}
+                />
+                SHOW ANSWERS
+              </label>
             </div>
             <QuestionCardGrid>
               {items.map((qq) => (
                 <QuestionCard
                   key={qq.id}
                   question={qq}
+                  showAnswer={showAnswers}
                   selectControl={
                     <input
                       type="checkbox"

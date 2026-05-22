@@ -9,6 +9,7 @@
 // borders, sapphire chips, monospace metadata, no shadows.
 
 import type { ReactNode } from "react";
+import { Check } from "lucide-react";
 import type { Question } from "../lib/qbank";
 import Latex from "./Latex";
 
@@ -18,6 +19,7 @@ export function QuestionCard({
   question,
   actions,
   selectControl,
+  showAnswer = false,
 }: {
   question: Question;
   actions?: ReactNode;
@@ -26,9 +28,13 @@ export function QuestionCard({
    * forking the card component. When undefined, no extra wrapper is
    * rendered around the stem. */
   selectControl?: ReactNode;
+  /** When true, the correct option(s) are emphasized (emerald fill +
+   * check). Driven by the Question Bank's "Show answers" toggle. */
+  showAnswer?: boolean;
 }) {
   const shown = question.options.slice(0, MAX_OPTIONS_SHOWN);
   const extra = question.options.length - shown.length;
+  const correctSet = new Set(question.correct);
   return (
     <div className="group flex h-full flex-col rounded-sm border border-slate-200 bg-white p-3 transition-colors duration-150 hover:border-[#1E3A8A]">
       {selectControl !== undefined ? (
@@ -46,16 +52,51 @@ export function QuestionCard({
         />
       )}
       <ul className="mt-2 flex-1 space-y-0.5 font-mono text-xs text-slate-600">
-        {shown.map((o) => (
-          <li key={o.label} className="flex gap-1">
-            <span className="shrink-0 font-medium text-[#0B3B8C]">
-              {o.label}.
-            </span>
-            <Latex text={o.content} className="line-clamp-1 block" />
-          </li>
-        ))}
+        {shown.map((o) => {
+          const isCorrect = showAnswer && correctSet.has(o.label);
+          return (
+            <li
+              key={o.label}
+              className={
+                "flex items-start gap-1 " +
+                (isCorrect ? "-mx-1 rounded-sm bg-emerald-50 px-1" : "")
+              }
+            >
+              <span
+                className={
+                  "shrink-0 font-medium " +
+                  (isCorrect ? "text-emerald-700" : "text-[#0B3B8C]")
+                }
+              >
+                {o.label}.
+              </span>
+              <Latex
+                text={o.content}
+                className={
+                  "line-clamp-1 block min-w-0 flex-1 " +
+                  (isCorrect ? "text-emerald-800" : "")
+                }
+              />
+              {isCorrect && (
+                <Check
+                  size={12}
+                  strokeWidth={2}
+                  className="mt-0.5 shrink-0 text-emerald-600"
+                  aria-label="Correct answer"
+                />
+              )}
+            </li>
+          );
+        })}
         {extra > 0 && (
-          <li className="font-mono text-xs text-slate-400">+{extra} more</li>
+          <li className="font-mono text-xs text-slate-400">
+            +{extra} more
+            {showAnswer &&
+              question.options
+                .slice(MAX_OPTIONS_SHOWN)
+                .some((o) => correctSet.has(o.label)) &&
+              " (incl. answer)"}
+          </li>
         )}
       </ul>
       <div className="mt-2 flex items-center gap-2">

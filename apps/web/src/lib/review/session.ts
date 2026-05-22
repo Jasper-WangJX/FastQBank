@@ -21,17 +21,33 @@ export function allSelected(ids: string[], set: Set<string>): boolean {
   return ids.length > 0 && ids.every((id) => set.has(id));
 }
 
-/** Order-independent exact-set comparison of picked labels vs correct. */
-export function isAnswerCorrect(
-  question: Question,
+/** Order-independent exact-set comparison of picked labels vs a correct
+ *  label list. Use this with a DeckCard's `correct` (which is expressed in
+ *  the card's possibly re-labeled option space). */
+export function isSelectionCorrect(
+  correct: string[],
   selected: string[],
 ): boolean {
   if (selected.length === 0) return false;
   const a = new Set(selected);
-  const b = new Set(question.correct);
+  const b = new Set(correct);
   if (a.size !== b.size) return false;
   for (const x of a) if (!b.has(x)) return false;
   return true;
+}
+
+/** Order-independent exact-set comparison of picked labels vs a question's
+ *  canonical correct labels. */
+export function isAnswerCorrect(
+  question: Question,
+  selected: string[],
+): boolean {
+  return isSelectionCorrect(question.correct, selected);
+}
+
+/** Sequential display label by position: 0->A, 1->B, 2->C … */
+function seqLabel(i: number): string {
+  return String.fromCharCode(65 + i);
 }
 
 /** Fisher–Yates (descending) using an injected rng; returns a new array.
@@ -54,8 +70,16 @@ export function applyRandomCap<T>(items: T[], count: number, rng: Rng): T[] {
 
 export interface DeckCard {
   question: Question;
-  /** Display order of options for THIS card (stable for the session). */
+  /** Display order of options for THIS card (stable for the session).
+   *  When shuffled, only the *content* moves: labels are re-assigned
+   *  sequentially (A, B, C…) by display position, so the letters down
+   *  the list always read in order. */
   options: Option[];
+  /** Correct labels in terms of THIS card's (possibly re-labeled)
+   *  options. Judge / unshuffled cards reuse the question's canonical
+   *  labels; shuffled cards carry the relabeled positions. Always use
+   *  this — never question.correct — when judging picks for the card. */
+  correct: string[];
 }
 
 export interface BuildDeckOpts {
@@ -67,7 +91,10 @@ export interface BuildDeckOpts {
 }
 
 /** Turn the resolved questions into cards: fix each card's option order
- *  once (judge T/F is never shuffled — it must stay True,False). */
+ *  once (judge T/F is never shuffled — it must stay True,False). When a
+ *  card's options ARE shuffled, the labels are re-assigned A,B,C… by
+ *  display position so only the content moves; `correct` is remapped to
+ *  the new labels accordingly. */
 export function buildDeck(
   questions: Question[],
   opts: BuildDeckOpts,
@@ -75,11 +102,25 @@ export function buildDeck(
   const ordered = opts.randomOrder
     ? shuffleWithRng(questions, opts.rng)
     : questions;
-  return ordered.map((question) => ({
-    question,
-    options:
-      opts.shuffleOptions && question.type !== "judge"
-        ? shuffleWithRng(question.options, opts.rng)
-        : question.options.slice(),
-  }));
+  return ordered.map((question) => {
+    const shuffle = opts.shuffleOptions && question.type !== "judge";
+    if (!shuffle) {
+      return {
+        question,
+        options: question.options.slice(),
+        correct: question.correct.slice(),
+      };
+    }
+    const correctOrig = new Set(question.correct);
+    const shuffled = shuffleWithRng(question.options, opts.rng);
+    // Re-label by display position: content moves, letters stay A,B,C…
+    const options = shuffled.map((o, i) => ({
+      label: seqLabel(i),
+      content: o.content,
+    }));
+    const correct = shuffled
+      .map((o, i) => (correctOrig.has(o.label) ? seqLabel(i) : null))
+      .filter((l): l is string => l !== null);
+    return { question, options, correct };
+  });
 }

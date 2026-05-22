@@ -25,7 +25,7 @@ import { getWrongSet, masterWrong, postReviewLog } from "../lib/review";
 import { isAiCard } from "../lib/review/aiDraft";
 import {
   buildDeck,
-  isAnswerCorrect,
+  isSelectionCorrect,
   type DeckCard,
 } from "../lib/review/session";
 import Latex from "../components/Latex";
@@ -65,18 +65,14 @@ export default function ReviewSessionPage() {
 function ReviewRunner({ config }: { config: ReviewConfig }) {
   const navigate = useNavigate();
 
-  // Build the deck ONCE (option order must stay stable for the session).
-  // Reorder to selection order unless Random pick re-randomized it.
+  // Build the deck ONCE (option + card order must stay stable for the
+  // session). Card order is ALWAYS randomized so a review run never
+  // replays the questions in their selection order — independent of the
+  // "Random pick" subset-sampling flag. (requestedOrder is therefore no
+  // longer consulted here; it's kept in the config for callers/history.)
   const deck = useMemo<DeckCard[]>(() => {
-    let qs = config.questions;
-    if (!config.randomOrder) {
-      const pos = new Map(config.requestedOrder.map((id, i) => [id, i]));
-      qs = qs
-        .slice()
-        .sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
-    }
-    return buildDeck(qs, {
-      randomOrder: config.randomOrder,
+    return buildDeck(config.questions, {
+      randomOrder: true,
       shuffleOptions: config.shuffleOptions,
       rng: Math.random,
     });
@@ -261,7 +257,7 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
   async function doReveal(sel: string[] = picked) {
     if (revealed || sel.length === 0) return;
     setRevealed(true);
-    const correct = isAnswerCorrect(q, sel);
+    const correct = isSelectionCorrect(card.correct, sel);
     setResults((r) => [...r, { question: q, correct }]);
     // Fast mode: linger briefly on the result, then auto-advance.
     if (fastMode) {
@@ -340,7 +336,7 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
     setAddError(null);
   }
 
-  const correctSet = new Set(q.correct);
+  const correctSet = new Set(card.correct);
   const pickedSet = new Set(picked);
 
   return (
@@ -411,9 +407,11 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
           // Default: hairline + white.
           let cls =
             "border-slate-200 bg-white hover:bg-[#EFF6FF] hover:border-[#1E3A8A]";
-          // Reveal states (correct first — even if also picked).
+          // Reveal states (correct first — even if also picked). Correct
+          // is GREEN so it can't be confused with the sapphire "selected"
+          // highlight; a wrong pick is red.
           if (revealed && isCorrect)
-            cls = "border-[#1E3A8A] bg-[#EFF6FF]";
+            cls = "border-emerald-500 bg-emerald-50";
           else if (revealed && isPicked && !isCorrect)
             cls = "border-red-500 bg-red-50";
           else if (!revealed && isPicked)
@@ -438,7 +436,7 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
               {/* Trailing mono chip — order matters: correct beats wrong-pick. */}
               {revealed && isCorrect ? (
                 <span
-                  className="shrink-0 rounded-sm border border-[#1E3A8A] bg-white px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-[#0B3B8C]"
+                  className="shrink-0 rounded-sm border border-emerald-400 bg-white px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-emerald-700"
                   style={{ fontFamily: MONO_FAMILY }}
                 >
                   [OK]
@@ -487,7 +485,7 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
             <button
               disabled={picked.length === 0}
               onClick={() => doReveal()}
-              className="inline-flex items-center gap-2 rounded-sm border-2 border-[#1E3A8A] bg-[#1E3A8A] px-4 py-2 font-mono text-[12px] uppercase tracking-wider text-white transition-colors duration-120 hover:bg-[#0B3B8C] disabled:opacity-60"
+              className="ml-auto inline-flex items-center gap-2 rounded-sm border-2 border-[#1E3A8A] bg-[#1E3A8A] px-4 py-2 font-mono text-[12px] uppercase tracking-wider text-white transition-colors duration-120 hover:bg-[#0B3B8C] disabled:opacity-60"
               style={{ fontFamily: MONO_FAMILY }}
             >
               <CornerDownLeft size={13} strokeWidth={1.5} />
@@ -498,7 +496,7 @@ function ReviewRunner({ config }: { config: ReviewConfig }) {
           <>
             {/* Only offer "mastered" when this attempt was correct —
                 a still-wrong redo shouldn't be markable as mastered. */}
-            {isWrongSetSession && isAnswerCorrect(q, picked) && (
+            {isWrongSetSession && isSelectionCorrect(card.correct, picked) && (
               <div className="flex items-center gap-2">
                 <button
                   disabled={mastered.has(q.id)}

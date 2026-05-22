@@ -108,7 +108,21 @@ describe("buildDeck — order + per-card option shuffle", () => {
     expect(deck.map((c) => c.question.id)).toEqual(["1", "2", "3"]);
   });
 
-  it("shuffles options per card but never for judge", () => {
+  it("shuffles option CONTENT but keeps labels sequential (A,B,C)", () => {
+    // rng 0.9999 shuffles contents [a,b,c] -> [b,c,a]; labels are then
+    // re-assigned by position so they read A,B,C with shuffled content.
+    const deck = buildDeck([q("1", { correct: ["A"] })], {
+      randomOrder: false,
+      shuffleOptions: true,
+      rng: () => 0.9999,
+    });
+    expect(deck[0].options.map((o) => o.label)).toEqual(["A", "B", "C"]);
+    expect(deck[0].options.map((o) => o.content)).toEqual(["b", "c", "a"]);
+    // Original correct "A" (content "a") landed at the last position -> "C".
+    expect(deck[0].correct).toEqual(["C"]);
+  });
+
+  it("never shuffles judge and keeps its canonical labels + correct", () => {
     const judge = q("j", {
       type: "judge",
       options: [
@@ -117,25 +131,22 @@ describe("buildDeck — order + per-card option shuffle", () => {
       ],
       correct: ["T"],
     });
-    const deck = buildDeck([q("1"), judge], {
+    const deck = buildDeck([judge], {
       randomOrder: false,
       shuffleOptions: true,
       rng: () => 0.9999,
     });
-    expect(deck[1].options.map((o) => o.label)).toEqual(["T", "F"]);
-    expect(deck[0].options.map((o) => o.label).sort()).toEqual([
-      "A",
-      "B",
-      "C",
-    ]);
+    expect(deck[0].options.map((o) => o.label)).toEqual(["T", "F"]);
+    expect(deck[0].correct).toEqual(["T"]);
   });
 
-  it("does not shuffle options when the flag is off", () => {
-    const deck = buildDeck([q("1")], {
+  it("does not shuffle options or remap labels when the flag is off", () => {
+    const deck = buildDeck([q("1", { correct: ["A"] })], {
       randomOrder: false,
       shuffleOptions: false,
       rng: () => 0.9999,
     });
     expect(deck[0].options.map((o) => o.label)).toEqual(["A", "B", "C"]);
+    expect(deck[0].correct).toEqual(["A"]);
   });
 });
