@@ -29,6 +29,15 @@ function PublicOnly({ children }: { children: ReactNode }) {
   return isAuthenticated ? <Navigate to="/" replace /> : <>{children}</>;
 }
 
+/** The "/" route. The desktop shell must NEVER render the marketing
+ *  LandingPage — it's a web-only surface. Inside the Electron shell we
+ *  send "/" straight into the app (RequireAuth bounces to /login when
+ *  not signed in). On the web, "/" is the public LandingPage as before. */
+function HomeRoute() {
+  if (getDesktop()) return <Navigate to="/questions" replace />;
+  return <LandingPage />;
+}
+
 /** Listens for the desktop main-process IPC carrying the OAuth
  *  callback. Lives inside AuthProvider so it can call login(). */
 function DesktopOAuthListener() {
@@ -65,10 +74,10 @@ function App() {
       <AuthProvider>
         <DesktopOAuthListener />
         <Routes>
-          {/* Public landing page. Renders for every visitor; the
-              embedded "ENTER WEB" / "OPEN APP" CTA flips based on the
-              current auth state. */}
-          <Route path="/" element={<LandingPage />} />
+          {/* Public landing page (web only). On desktop HomeRoute
+              redirects into the app — the marketing landing must never
+              show inside the Electron shell. */}
+          <Route path="/" element={<HomeRoute />} />
 
           <Route
             path="/login"
