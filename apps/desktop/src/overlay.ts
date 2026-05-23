@@ -8,6 +8,7 @@
 import { BrowserWindow, ipcMain, type Display } from "electron";
 import { IPC } from "./ipc";
 import type { RectCss } from "./capture";
+import { dlog } from "./debug-log";
 
 interface CaptureOpts {
   display: Display;
@@ -64,6 +65,11 @@ export function captureRegion(opts: CaptureOpts): Promise<RectCss | null> {
         win.getBounds(),
       )}\n`,
     );
+    dlog("overlay", "constructed", {
+      requested: b,
+      actual: win.getBounds(),
+      scale: opts.scaleFactor,
+    });
 
     let settled = false;
     const finish = (rect: RectCss | null) => {
@@ -89,13 +95,19 @@ export function captureRegion(opts: CaptureOpts): Promise<RectCss | null> {
       }
     };
     const onReady = (e: Electron.IpcMainEvent) => {
-      if (fromThisWin(e)) sendBg();
+      if (!fromThisWin(e)) return;
+      dlog("overlay", "ready");
+      sendBg();
     };
     const onRegion = (e: Electron.IpcMainEvent, rect: RectCss) => {
-      if (fromThisWin(e)) finish(rect);
+      if (!fromThisWin(e)) return;
+      dlog("overlay", "region", { rect });
+      finish(rect);
     };
     const onCancel = (e: Electron.IpcMainEvent) => {
-      if (fromThisWin(e)) finish(null);
+      if (!fromThisWin(e)) return;
+      dlog("overlay", "cancel");
+      finish(null);
     };
 
     ipcMain.on(IPC.overlayReady, onReady);
@@ -105,9 +117,26 @@ export function captureRegion(opts: CaptureOpts): Promise<RectCss | null> {
     // did-finish-load covers the case where the renderer's onBackground
     // listener is registered before this fires; overlayReady covers the
     // opposite race. Both just set the same bg, so doubling is harmless.
-    win.webContents.once("did-finish-load", sendBg);
-    win.on("blur", () => finish(null));
-    win.on("closed", () => finish(null));
+    win.webContents.once("did-finish-load", () => {
+      dlog("overlay", "did-finish-load");
+      sendBg();
+    });
+    if (process.platform !== "darwin") {
+      win.on("blur", () => {
+        dlog("overlay", "blur -> finish(null)");
+        finish(null);
+      });
+    } else {
+      // macOS: a stray focus loss right after show() (system overlay
+      // animations, dock icon swap, ScreenCaptureKit picker) used to
+      // instantly close the overlay before the user could draw. Esc
+      // and IPC cancel are sufficient on this platform.
+      win.on("blur", () => dlog("overlay", "blur (ignored on darwin)"));
+    }
+    win.on("closed", () => {
+      dlog("overlay", "closed");
+      finish(null);
+    });
 
     void win.loadURL(opts.overlayUrl);
     win.show();

@@ -12,8 +12,16 @@
 // Dev mode (ELECTRON_DEV=1) instead points at the Vite dev server so the
 // normal HMR workflow is unchanged.
 
-import { app, BrowserWindow, Menu, Tray, nativeImage, protocol } from "electron";
-import { promises as fsp, statSync } from "node:fs";
+import {
+  app,
+  BrowserWindow,
+  Menu,
+  Tray,
+  nativeImage,
+  protocol,
+  systemPreferences,
+} from "electron";
+import { promises as fsp, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   getSidecarState,
@@ -26,6 +34,7 @@ import { captureRegion } from "./overlay";
 import { registerShortcut, unregisterShortcut } from "./shortcut";
 import { IPC, registerIpc } from "./ipc";
 import { openGoogleAuthUrl, startLoopbackOnce } from "./oauth";
+import { dlog } from "./debug-log";
 
 const isDev = process.env.ELECTRON_DEV === "1";
 const DEV_SERVER_URL = "http://localhost:5173";
@@ -223,6 +232,10 @@ let capturing = false;
 async function captureAndRecognize(): Promise<void> {
   if (capturing) return;
   const st = getSidecarState();
+  dlog("capture", "trigger", {
+    sidecar: st,
+    screenPerm: systemPreferences.getMediaAccessStatus("screen"),
+  });
   if (st !== "ready") {
     showWindow();
     mainWindow?.webContents.send(IPC.ocrError, {
@@ -236,9 +249,27 @@ async function captureAndRecognize(): Promise<void> {
   capturing = true;
   try {
     const { display, thumbnail } = await grabScreen();
+    dlog("capture", "grab ok", {
+      displayId: display.id,
+      scale: display.scaleFactor,
+      bounds: display.bounds,
+      bitmap: thumbnail.getSize(),
+    });
+    if (process.platform === "darwin") {
+      const thumbPath = path.join(app.getPath("logs"), "last-thumb.png");
+      try {
+        writeFileSync(thumbPath, thumbnail.toPNG());
+        dlog("capture", "thumb dumped", { thumbPath });
+      } catch (e) {
+        dlog("capture", "thumb dump failed", {
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
     const overlayUrl = isDev
       ? `${DEV_SERVER_URL}/?overlay=1`
       : `${APP_ORIGIN_URL}?overlay=1`;
+    dlog("capture", "overlay before", { overlayUrl });
     const rect = await captureRegion({
       display,
       backgroundDataUrl: thumbnail.toDataURL(),
@@ -246,6 +277,7 @@ async function captureAndRecognize(): Promise<void> {
       preloadPath: PRELOAD,
       overlayUrl,
     });
+    dlog("capture", "overlay after", { rect });
     if (!rect) return; // cancelled (Esc / clicked away)
     // Overlay canvas == window.innerWidth/Height == this display's DIP
     // bounds; cropToPng derives the real bitmap ratio from that.
@@ -255,7 +287,13 @@ async function captureAndRecognize(): Promise<void> {
     });
     if (!png) return; // selection too small — treat as a misclick
     mainWindow?.webContents.send(IPC.ocrBusy, true);
+    dlog("capture", "ocr before", { bytes: png.length });
     const result = await ocrImage(png);
+    dlog("capture", "ocr after", {
+      engine: result.engine,
+      lines: result.lines.length,
+      elapsed: result.elapsed_ms,
+    });
     showWindow();
     // Carry the cropped screenshot (base64 PNG) alongside the OCR text
     // so the renderer can offer "Improve with AI" (stage-6 vision
@@ -266,6 +304,9 @@ async function captureAndRecognize(): Promise<void> {
       image_b64: png.toString("base64"),
     });
   } catch (err) {
+    dlog("capture", "error", {
+      err: err instanceof Error ? err.message : String(err),
+    });
     showWindow();
     mainWindow?.webContents.send(IPC.ocrError, {
       error: err instanceof Error ? err.message : String(err),
