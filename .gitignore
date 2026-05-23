@@ -29,6 +29,12 @@ apps/desktop/build/*
 dist-electron/
 release/
 
+# ---------- OCR sidecar (Windows build only) ----------
+# `pnpm build:sidecar` on Windows stages hundreds of MB of PaddleOCR
+# det/rec/cls weights here before PyInstaller bundles them; macOS uses
+# Apple Vision and produces no _models/ at all.
+_models/
+
 # ---------- Deploy: Windows installer payload ----------
 # Created on the VPS / locally by `scp`-ing the built .exe in.
 # Bind-mounted into the Caddy container via deploy/docker-compose.prod.yml.
