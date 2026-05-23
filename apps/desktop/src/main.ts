@@ -34,7 +34,7 @@ import { captureRegion } from "./overlay";
 import { registerShortcut, unregisterShortcut } from "./shortcut";
 import { IPC, registerIpc } from "./ipc";
 import { openGoogleAuthUrl, startLoopbackOnce } from "./oauth";
-import { dlog } from "./debug-log";
+import { dlog, dlogEnabled } from "./debug-log";
 
 const isDev = process.env.ELECTRON_DEV === "1";
 const DEV_SERVER_URL = "http://localhost:5173";
@@ -255,7 +255,7 @@ async function captureAndRecognize(): Promise<void> {
       bounds: display.bounds,
       bitmap: thumbnail.getSize(),
     });
-    if (process.platform === "darwin") {
+    if (dlogEnabled()) {
       const thumbPath = path.join(app.getPath("logs"), "last-thumb.png");
       try {
         writeFileSync(thumbPath, thumbnail.toPNG());
