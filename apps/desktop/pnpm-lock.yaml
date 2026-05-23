@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@electron/notarize':
+        specifier: ^2.5.0
+        version: 2.5.0
       '@types/node':
         specifier: ^24.12.3
         version: 24.12.4

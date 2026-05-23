@@ -1,0 +1,11 @@
+# macOS (Apple Silicon) deps — Apple Vision engine (engine_vision.py).
+#
+# paddlepaddle has no working CPU path on arm64 macOS (no oneDNN; the
+# fallback kernels run minutes/image), so the mac build uses the Vision
+# system framework instead. That means NO paddle, NO opencv here — Vision
+# ships with the OS, which also keeps the signed/notarized .app small.
+#
+# Windows deps stay in requirements.txt (PaddleOCR). The two platforms are
+# maintained independently.
+pyobjc-framework-Vision==12.1
+pyobjc-framework-Quartz==12.1
