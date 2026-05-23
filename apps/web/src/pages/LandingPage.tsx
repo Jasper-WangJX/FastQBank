@@ -12,9 +12,12 @@
 //   - `/` route renders this for ANY user (auth or not).
 //   - "ENTER WEB →" navigates to /login for guests, /questions for
 //     authenticated users (label flips to "OPEN APP →" in that case).
-//   - The Windows installer is served as a static file at
-//     /download/FastQBank-Setup-1.0.2.exe — see deploy/ for the
-//     reverse-proxy alias that maps it to apps/desktop/release/.
+//   - Desktop installers are served as static files under /download/.
+//     deploy/Caddyfile's `handle_path /download/*` block strips the
+//     prefix and resolves to <repo>/downloads/ on the VPS, so dropping
+//     either `FastQBank-Setup-1.0.2.exe` (Windows) or
+//     `FastQBank-1.0.2-arm64.dmg` (macOS / Apple Silicon) in that
+//     directory makes it available at the matching URL.
 
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
@@ -400,22 +403,37 @@ export default function LandingPage() {
 
           <p className="max-w-2xl text-base leading-relaxed text-white/65">
             OCR-driven capture, AI-suggested tags, drill-anywhere review — one
-            library across web and Windows, with sharp pixels and zero
-            ceremony.
+            library across web, Windows, and macOS, with sharp pixels and
+            zero ceremony.
           </p>
 
-          <div className="mt-2 flex flex-col items-start gap-3">
-            <a
-              href="/download/FastQBank-Setup-1.0.2.exe"
-              className="fqb-cta inline-flex items-center gap-3 rounded-sm bg-transparent px-6 py-3 font-mono text-[12px] uppercase tracking-[0.18em] text-white transition-all duration-200"
-              style={{ border: "1.5px solid #60A5FA" }}
-            >
-              <IconDownload className="text-[#60A5FA]" />
-              DOWNLOAD FOR WINDOWS · 1.0.2
-            </a>
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-white/40">
-              ~ 300 MB · Win 10/11
-            </p>
+          <div className="mt-2 flex flex-col items-start gap-5">
+            <div className="flex flex-col items-start gap-2">
+              <a
+                href="/download/FastQBank-Setup-1.0.2.exe"
+                className="fqb-cta inline-flex items-center gap-3 rounded-sm bg-transparent px-6 py-3 font-mono text-[12px] uppercase tracking-[0.18em] text-white transition-all duration-200"
+                style={{ border: "1.5px solid #60A5FA" }}
+              >
+                <IconDownload className="text-[#60A5FA]" />
+                DOWNLOAD FOR WINDOWS · 1.0.2
+              </a>
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-white/40">
+                ~ 300 MB · Win 10/11
+              </p>
+            </div>
+            <div className="flex flex-col items-start gap-2">
+              <a
+                href="/download/FastQBank-1.0.2-arm64.dmg"
+                className="fqb-cta inline-flex items-center gap-3 rounded-sm bg-transparent px-6 py-3 font-mono text-[12px] uppercase tracking-[0.18em] text-white transition-all duration-200"
+                style={{ border: "1.5px solid #60A5FA" }}
+              >
+                <IconDownload className="text-[#60A5FA]" />
+                DOWNLOAD FOR MAC · 1.0.2
+              </a>
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-white/40">
+                ~ 100 MB · macOS · Apple Silicon
+              </p>
+            </div>
           </div>
 
           {/* Telemetry chips */}
