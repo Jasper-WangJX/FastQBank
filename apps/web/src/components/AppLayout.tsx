@@ -52,6 +52,16 @@ export default function AppLayout() {
   // browser; truthy inside the desktop shell — drives both the OCR
   // wiring and the custom titlebar (drag region + window controls).
   const desktop = getDesktop();
+  // The global hotkey is the same CommandOrControl+Shift+Q accelerator
+  // on both platforms, but Electron resolves it to ⌘⇧Q on macOS and
+  // Ctrl+Shift+Q on Windows. The fallback Alt+Q likewise binds to ⌥
+  // on macOS. Match each platform's keycap convention in the UI hint.
+  const isMacDesktop =
+    desktop !== undefined &&
+    typeof navigator !== "undefined" &&
+    navigator.userAgent.includes("Mac");
+  const ocrShortcutLabel = isMacDesktop ? "⌘⇧Q" : "Ctrl+Shift+Q";
+  const ocrShortcutFallback = isMacDesktop ? "⌥Q or F8" : "Alt+Q or F8";
 
   function onLogout() {
     logout();
@@ -213,16 +223,16 @@ export default function AppLayout() {
               <button
                 type="button"
                 onClick={() => desktop.ocr.trigger()}
-                title="Screenshot a question on screen and import it via OCR. Global shortcut: Ctrl+Shift+Q (falls back to Alt+Q or F8 if the first combo is taken by another app)."
+                title={`Screenshot a question on screen and import it via OCR. Global shortcut: ${ocrShortcutLabel} (falls back to ${ocrShortcutFallback} if the first combo is taken by another app).`}
                 className="inline-flex items-center gap-1.5 rounded-sm border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition-colors duration-150 hover:border-[#1E3A8A] hover:text-[#1E3A8A]"
               >
                 <Camera size={14} strokeWidth={1.5} />
                 OCR
                 <span
                   aria-hidden
-                  className="ml-0.5 hidden font-mono text-[10px] uppercase tracking-[0.08em] text-slate-400 sm:inline"
+                  className={`ml-0.5 hidden font-mono text-[10px] tracking-[0.08em] text-slate-400 sm:inline ${isMacDesktop ? "" : "uppercase"}`}
                 >
-                  Ctrl+Shift+Q
+                  {ocrShortcutLabel}
                 </span>
               </button>
             )}
